@@ -1,4 +1,5 @@
 import { useState, useMemo } from 'react'
+import { Link } from 'react-router-dom'
 import {
   Plus,
   Minus,
@@ -94,9 +95,9 @@ export function POSPage() {
       <div className="flex items-center justify-center h-full">
         <div className="text-center">
           <p className="text-gray-500 text-lg mb-4">You need to clock in to start a shift.</p>
-          <a href="/cashier/shift" className="text-blue-600 hover:text-blue-700 font-medium">
+          <Link to="/cashier/shift" className="text-blue-600 hover:text-blue-700 font-medium">
             Go to Shift Management
-          </a>
+          </Link>
         </div>
       </div>
     )
