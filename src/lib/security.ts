@@ -71,8 +71,11 @@ export function sanitizeQuantity(raw: number): number {
   return Math.min(999, Math.floor(raw))
 }
 
-/** Validate a price: non-negative, reasonable ceiling. */
+/** Validate a price: non-negative, reasonable ceiling.
+ *
+ * Cap is 100,000,000 (≈ Rp 100 juta) so IDR-priced premium items
+ * (wagyu, seafood platters, etc.) aren't silently truncated. */
 export function sanitizePrice(raw: number): number {
   if (!Number.isFinite(raw) || raw < 0) return 0
-  return Math.min(1_000_000, raw)
+  return Math.min(100_000_000, raw)
 }

@@ -21,6 +21,7 @@ export const t = {
     required: 'Wajib diisi',
     error: 'Terjadi kesalahan',
     success: 'Berhasil',
+    actions: 'Aksi',
     all: 'Semua',
     search: 'Cari',
     refresh: 'Segarkan',

@@ -158,7 +158,7 @@ export function AdminStaff() {
                   <th className="px-6 py-3 font-medium">{t.admin.staff.emailLabel}</th>
                   <th className="px-6 py-3 font-medium">{t.admin.staff.roleLabel}</th>
                   <th className="px-6 py-3 font-medium">{t.common.status}</th>
-                  <th className="px-6 py-3 font-medium text-right">{t.common.name}</th>
+                  <th className="px-6 py-3 font-medium text-right">{t.common.actions}</th>
                 </tr>
               </thead>
               <tbody>
