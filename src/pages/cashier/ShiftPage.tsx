@@ -95,7 +95,7 @@ export function ShiftPage() {
                     {shift.end_time ? formatDateTime(shift.end_time) : '-'}
                   </div>
                   <div className="text-sm">
-                    {shift.order_count} {t.common.items.toLowerCase()} &middot; {formatCurrency(shift.total_sales)}
+                    {shift.order_count} {t.cashier.shift.orders.toLowerCase()} &middot; {formatCurrency(shift.total_sales)}
                   </div>
                 </div>
               ))}
