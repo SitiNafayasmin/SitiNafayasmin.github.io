@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Plus, Trash2, UserCheck, UserX } from 'lucide-react'
 import { useAuthStore } from '../../stores/authStore'
+import { MAX_PIN_LENGTH, MIN_PIN_LENGTH, isValidPinFormat } from '../../lib/security'
 import type { StaffRole } from '../../lib/types'
 
 export function AdminStaff() {
@@ -9,11 +10,24 @@ export function AdminStaff() {
   const [name, setName] = useState('')
   const [role, setRole] = useState<StaffRole>('cashier')
   const [pin, setPin] = useState('')
+  const [error, setError] = useState('')
 
   const handleAdd = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!name.trim() || pin.length < 4) return
-    await addStaff(name.trim(), role, pin)
+    setError('')
+    if (!name.trim()) {
+      setError('Name is required.')
+      return
+    }
+    if (!isValidPinFormat(pin)) {
+      setError(`PIN must be ${MIN_PIN_LENGTH}–${MAX_PIN_LENGTH} digits.`)
+      return
+    }
+    const result = await addStaff(name.trim(), role, pin)
+    if (!result) {
+      setError('Could not create staff member.')
+      return
+    }
     setName('')
     setPin('')
     setShowForm(false)
@@ -56,17 +70,20 @@ export function AdminStaff() {
               </select>
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">PIN (min 4 digits)</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                PIN ({MIN_PIN_LENGTH}–{MAX_PIN_LENGTH} digits)
+              </label>
               <input
                 type="password"
                 value={pin}
-                onChange={(e) => setPin(e.target.value.replace(/\D/g, ''))}
-                maxLength={8}
+                onChange={(e) => setPin(e.target.value.replace(/\D/g, '').slice(0, MAX_PIN_LENGTH))}
+                maxLength={MAX_PIN_LENGTH}
                 required
                 className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
             </div>
           </div>
+          {error && <p className="mt-3 text-sm text-rose-600">{error}</p>}
           <div className="flex gap-2 mt-4">
             <button type="submit" className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-700">
               Create

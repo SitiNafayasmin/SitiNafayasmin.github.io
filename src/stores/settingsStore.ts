@@ -15,6 +15,7 @@ const DEFAULT_SETTINGS: Settings = {
   tax_rate: 6,
   receipt_footer: 'Thank you for your purchase!',
   currency: 'MYR',
+  default_wait_minutes: 15,
 }
 
 export const useSettingsStore = create<SettingsState>((set, get) => ({
@@ -27,7 +28,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
   },
 
   initialize: () => {
-    const settings = getItem<Settings>('settings', DEFAULT_SETTINGS)
-    set({ settings })
+    const raw = getItem<Partial<Settings>>('settings', DEFAULT_SETTINGS)
+    set({ settings: { ...DEFAULT_SETTINGS, ...raw } })
   },
 }))

@@ -34,12 +34,30 @@ export function AdminSettings() {
   const handleImport = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
+    if (file.size > 5 * 1024 * 1024) {
+      alert('Backup file too large (max 5MB).')
+      return
+    }
     const reader = new FileReader()
     reader.onload = () => {
       try {
-        const data = JSON.parse(reader.result as string) as Record<string, string>
-        Object.entries(data).forEach(([key, value]) => {
-          localStorage.setItem(key, value)
+        const data = JSON.parse(reader.result as string)
+        if (typeof data !== 'object' || data === null || Array.isArray(data)) {
+          throw new Error('Expected an object at top level')
+        }
+        // Only accept our own keys, and only string values. Never let an
+        // imported backup clobber unrelated localStorage entries.
+        const entries = Object.entries(data as Record<string, unknown>)
+        if (!entries.every(([k, v]) => k.startsWith('xevora_pos_') && typeof v === 'string')) {
+          throw new Error('Backup contains unexpected keys or non-string values')
+        }
+        // Clear existing xevora_pos_* keys before import, then apply.
+        for (let i = localStorage.length - 1; i >= 0; i--) {
+          const key = localStorage.key(i)
+          if (key?.startsWith('xevora_pos_')) localStorage.removeItem(key)
+        }
+        entries.forEach(([key, value]) => {
+          localStorage.setItem(key, value as string)
         })
         window.location.reload()
       } catch {
@@ -98,6 +116,27 @@ export function AdminSettings() {
               onChange={(e) => setForm({ ...form, receipt_footer: e.target.value })}
               className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Default wait time (minutes)
+            </label>
+            <input
+              type="number"
+              min={1}
+              max={120}
+              value={form.default_wait_minutes}
+              onChange={(e) =>
+                setForm({
+                  ...form,
+                  default_wait_minutes: Math.max(1, Math.min(120, parseInt(e.target.value) || 15)),
+                })
+              }
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+            <p className="mt-1 text-xs text-gray-500">
+              Suggested prep time shown to customers when their QR order is accepted.
+            </p>
           </div>
         </div>
         <div className="mt-4">

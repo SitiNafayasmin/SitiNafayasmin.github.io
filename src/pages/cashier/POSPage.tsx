@@ -17,6 +17,7 @@ import { useAuthStore } from '../../stores/authStore'
 import { useSettingsStore } from '../../stores/settingsStore'
 import type { OrderType, PaymentMethod, Product } from '../../lib/types'
 import { formatCurrency } from '../../lib/utils'
+import { sanitizeDiscount } from '../../lib/security'
 
 export function POSPage() {
   const { products, categories } = useProductStore()
@@ -64,7 +65,8 @@ export function POSPage() {
 
   const subtotal = cart.reduce((sum, c) => sum + c.product.price * c.quantity, 0)
   const tax = subtotal * (settings.tax_rate / 100)
-  const total = subtotal + tax - discount
+  const safeDiscount = sanitizeDiscount(discount, subtotal)
+  const total = subtotal + tax - safeDiscount
 
   const handleAddProduct = (product: Product) => {
     addToCart({ product, quantity: 1, notes: null })
@@ -81,8 +83,9 @@ export function POSPage() {
       tableNumber: orderType === 'dine_in' ? tableNumber || null : null,
       notes: orderNotes || null,
       taxRate: settings.tax_rate,
-      discount,
+      discount: safeDiscount,
     })
+    if (!order) return
     updateShiftSales(order.total)
     setShowCheckout(false)
     setDiscount(0)
@@ -306,10 +309,10 @@ export function POSPage() {
               <span>Tax ({settings.tax_rate}%)</span>
               <span>{formatCurrency(tax)}</span>
             </div>
-            {discount > 0 && (
+            {safeDiscount > 0 && (
               <div className="flex justify-between text-green-600">
                 <span>Discount</span>
-                <span>-{formatCurrency(discount)}</span>
+                <span>-{formatCurrency(safeDiscount)}</span>
               </div>
             )}
             <div className="flex justify-between text-lg font-bold text-gray-800 pt-2 border-t">
@@ -349,8 +352,10 @@ export function POSPage() {
                 <input
                   type="number"
                   step="0.01"
+                  min={0}
+                  max={subtotal}
                   value={discount || ''}
-                  onChange={(e) => setDiscount(parseFloat(e.target.value) || 0)}
+                  onChange={(e) => setDiscount(Math.max(0, parseFloat(e.target.value) || 0))}
                   className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
                   placeholder="0.00"
                 />

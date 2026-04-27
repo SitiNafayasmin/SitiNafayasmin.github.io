@@ -4,6 +4,19 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!--
+      Content-Security-Policy restricts what the page is allowed to load.
+      - default-src 'self': only load from same origin.
+      - img-src 'self' data: blob:: allow inline QR PNGs and downloaded blobs.
+      - connect-src also allows https: (so Supabase can be configured later).
+      - style-src 'unsafe-inline' is needed by Tailwind 4 / React inline styles.
+    -->
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; script-src 'self'; font-src 'self' data:; connect-src 'self' https:; frame-ancestors 'none'; base-uri 'self'; form-action 'self';"
+    />
+    <meta http-equiv="X-Content-Type-Options" content="nosniff" />
+    <meta name="referrer" content="strict-origin-when-cross-origin" />
     <title>Xevora POS</title>
   </head>
   <body>

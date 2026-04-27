@@ -17,9 +17,16 @@ export interface Product {
   created_at: string
 }
 
-export type OrderStatus = 'pending' | 'preparing' | 'ready' | 'completed' | 'cancelled'
+export type OrderStatus =
+  | 'awaiting_payment'
+  | 'pending'
+  | 'preparing'
+  | 'ready'
+  | 'completed'
+  | 'cancelled'
 export type OrderType = 'dine_in' | 'takeaway' | 'delivery'
 export type PaymentMethod = 'cash' | 'card' | 'ewallet'
+export type OrderSource = 'cashier' | 'customer_qr'
 
 export interface OrderItem {
   id: string
@@ -49,6 +56,11 @@ export interface Order {
   notes: string | null
   created_at: string
   completed_at: string | null
+  source: OrderSource
+  pickup_code: string | null
+  approved_at: string | null
+  estimated_wait_minutes: number | null
+  customer_name: string | null
 }
 
 export type ShiftStatus = 'active' | 'closed'
@@ -71,7 +83,10 @@ export interface Staff {
   name: string
   role: StaffRole
   pin_hash: string
+  pin_salt: string | null
+  pin_algo: 'pbkdf2-sha256' | 'sha256-legacy'
   active: boolean
+  must_change_pin: boolean
   created_at: string
 }
 
@@ -82,10 +97,18 @@ export interface Settings {
   tax_rate: number
   receipt_footer: string
   currency: string
+  default_wait_minutes: number
 }
 
 export interface CartItem {
   product: Product
   quantity: number
   notes: string | null
+}
+
+export interface Table {
+  id: string
+  label: string
+  active: boolean
+  created_at: string
 }
