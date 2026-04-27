@@ -194,11 +194,15 @@ DROP POLICY IF EXISTS "admin update settings" ON settings;
 CREATE POLICY "admin update settings" ON settings FOR UPDATE USING (public.is_admin()) WITH CHECK (public.is_admin());
 
 -- Staff table: only admins can read the list; every staff can read their
--- own row. No anon access at all. Writes happen exclusively via the
--- `invite-staff` Edge Function using the service role.
+-- own row. No anon access at all. Inserts/deletes go through the
+-- `invite-staff` Edge Function (service role). Admins can update existing
+-- rows directly (e.g. toggle active, change role) from the browser client.
 DROP POLICY IF EXISTS "admin read staff" ON staff;
 CREATE POLICY "admin read staff" ON staff FOR SELECT
   USING (public.is_admin() OR user_id = auth.uid());
+DROP POLICY IF EXISTS "admin update staff" ON staff;
+CREATE POLICY "admin update staff" ON staff FOR UPDATE
+  USING (public.is_admin()) WITH CHECK (public.is_admin());
 
 -- Shifts: staff see their own shifts; admins see all.
 DROP POLICY IF EXISTS "staff read own shifts" ON shifts;

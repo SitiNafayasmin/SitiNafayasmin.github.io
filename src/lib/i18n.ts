@@ -183,6 +183,9 @@ export const t = {
       emptyDesc: 'Undang staf pertama Anda untuk memulai.',
       you: 'Anda',
       pendingInvite: 'Belum mengatur kata sandi',
+      updateFailed: 'Gagal memperbarui staf.',
+      activated: 'Staf diaktifkan',
+      deactivated: 'Staf dinonaktifkan',
     },
     settings: {
       title: 'Pengaturan',

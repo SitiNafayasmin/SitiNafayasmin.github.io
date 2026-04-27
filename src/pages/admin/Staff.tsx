@@ -197,7 +197,22 @@ export function AdminStaff() {
                           <Button
                             size="sm"
                             variant="secondary"
-                            onClick={() => updateStaff(staff.id, { active: !staff.active })}
+                            onClick={async () => {
+                              setError('')
+                              setInfo('')
+                              const ok = await updateStaff(staff.id, {
+                                active: !staff.active,
+                              })
+                              if (!ok) {
+                                setError(t.admin.staff.updateFailed)
+                              } else {
+                                setInfo(
+                                  staff.active
+                                    ? `${t.admin.staff.deactivated}: ${staff.email}`
+                                    : `${t.admin.staff.activated}: ${staff.email}`,
+                                )
+                              }
+                            }}
                             disabled={isSelf}
                             title={staff.active ? t.admin.staff.deactivate : t.admin.staff.activate}
                           >
