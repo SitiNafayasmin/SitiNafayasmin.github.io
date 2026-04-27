@@ -1,110 +1,89 @@
-# Security Audit & Hardening
+# Security Model & Hardening
 
-This document summarises the security review conducted on Xevora POS and the fixes applied in this release.
+This document summarises the security model of Xevora POS (VPS / Supabase Auth build) and the hardening changes layered on top of the previous PIN-based prototype.
 
-## Summary
+## Threat model
 
-Xevora POS is a single-page React app that can run in two modes:
+Xevora POS is a static SPA that talks directly to Supabase (hosted on supabase.com or self-hosted on the operator's VPS). The client is untrusted; Supabase is the source of truth.
 
-1. **Local mode** — data lives in `localStorage`. There is no server to attack; the threat model is limited to what someone sitting at the machine can do or what a malicious sibling tab / browser extension / backup file can inject.
-2. **Supabase mode** — the app talks directly to Supabase with the publishable `anon` key. Security in this mode is enforced entirely by **Row Level Security (RLS)** in Postgres.
+Attackers considered:
 
-The previous revision of the app had critical issues in both modes. They have all been fixed.
+- **Public on the internet** — can read any URL of the SPA, can call any Supabase endpoint with the `anon` key that is embedded in the bundle, can submit customer QR orders.
+- **Former staff** — once their `staff.active` is flipped to `false` (or their staff row is deleted), all their tokens must stop working for writes / non-self reads. Deletion of the `auth.users` row revokes existing refresh tokens.
+- **Malicious insider** — a cashier should not be able to read other cashiers' shifts, other staff's emails, settings changes, or inventory mutations.
 
-## Previously identified vulnerabilities
+## Authentication (Supabase Auth)
 
-| # | Severity | Category | Description |
+- Login is email + password, handled entirely by Supabase Auth. Passwords are bcrypt-hashed by GoTrue; the app never sees or stores them.
+- Each cashier/admin has a unique auth user, linked to the app's `staff` table via `staff.user_id = auth.users.id`. Per-user shift activity is tracked by writing `cashier_user_id = auth.uid()` on every `shifts` row.
+- There is **no shared account and no default PIN.** The operator bootstraps the first admin by inviting themselves from the Supabase dashboard and running a one-line `INSERT` (see `README.md` → Supabase setup).
+- New staff are invited from **Admin → Staf → Undang Staf**. That button POSTs to the `invite-staff` Edge Function, which:
+  1. Validates that the caller's JWT corresponds to an active admin (`staff.role = 'admin' AND active = true`).
+  2. Calls `supabase.auth.admin.inviteUserByEmail()` using the service role key (available only to the Edge Function, never to the browser).
+  3. Upserts the matching `staff` row with the chosen role.
+  4. Supabase emails the invitee a magic link to `/reset-password`, where they set their own password.
+- Client-side login rate limiting: 5 failed attempts per email within 15 minutes → 15-minute lockout (`src/lib/security.ts`). Supabase also applies its own server-side throttling.
+- Password reset is supported from the login screen (`sendPasswordReset`) and on `/reset-password`.
+
+## Authorization (RLS)
+
+All tables have RLS enabled. `public.is_staff()` and `public.is_admin()` SECURITY DEFINER functions wrap the `auth.uid()` → staff-row → role lookup so policies stay compact.
+
+| Table | anon (public) | cashier | admin |
 |---|---|---|---|
-| 1 | **Critical** | Access control | `supabase/schema.sql` enabled RLS but added `FOR ALL USING (true)` policies on every table, including `staff.pin_hash`. With the `anon` key embedded in the client bundle, this exposed every row in the database (including PIN hashes) to the public internet. |
-| 2 | **High** | Credential storage | PINs were stored as unsalted SHA-256 hashes. Four-digit numeric PINs hashed with unsalted SHA-256 are trivially brute-forced from a rainbow table. |
-| 3 | **High** | Authentication | No lockout / rate limiting on PIN login. An attacker with physical access (or a compromised kiosk) could brute-force a PIN offline from the 10 000 numeric space in seconds. |
-| 4 | **High** | Privilege escalation | Default admin PIN `1234` was seeded and never required to be changed, so a freshly deployed install shipped with a universally known admin password. |
-| 5 | **Medium** | Input validation | The cashier POS accepted any numeric discount (including values greater than subtotal or negative values), and the backup-import dialog `Object.entries(...)`-spread **any** JSON file into `localStorage`, silently clobbering unrelated keys. |
-| 6 | **Medium** | Security headers | `index.html` had no CSP, no `X-Content-Type-Options`, no referrer policy, no `frame-ancestors` restriction, so the app could be framed (clickjacking) and a single compromised dependency could silently exfiltrate data. |
-| 7 | **Low** | XSS defense in depth | React already escapes all string interpolation, which defends against reflected XSS. Defence in depth (CSP + no inline `<script>`) was missing. |
-| 8 | **Low** | Data integrity | Table labels coming from QR URLs were used verbatim with no whitelist, allowing arbitrary strings through `table_number` — not exploitable as an XSS (React escapes it) but it enabled injecting garbage values that would later break sorting / filtering. |
+| `categories` | `SELECT` | full | full |
+| `products` | `SELECT WHERE available = true` | full | full |
+| `tables` | `SELECT WHERE active = true` | full | full |
+| `settings` | `SELECT` | `SELECT` | `UPDATE` |
+| `staff` | **none** | `SELECT` own row | `SELECT` all |
+| `shifts` | none | own rows (via `cashier_user_id = auth.uid()`) | all |
+| `orders` | `INSERT` customer_qr/awaiting_payment; `SELECT` by UUID | full | full |
+| `order_items` | `INSERT` if parent is customer_qr/awaiting_payment; `SELECT` | full | full |
 
-## Fixes applied in this release
+Notes:
 
-### 1. Supabase RLS rewritten (see `supabase/schema.sql`)
+- `staff` is completely invisible to the anon role. Inserts happen exclusively via the `invite-staff` Edge Function (service role).
+- Order UUIDs are unguessable, so we allow anon `SELECT` on `orders` and `order_items` so the customer-facing status page works without a session.
+- `settings` are globally readable so the customer page can render the business name + currency, but only admins can modify them.
 
-- Removed all `FOR ALL USING (true)` policies.
-- Public (`anon`) role can:
-  - `SELECT` on `categories`, on `products WHERE available = true`, on `tables WHERE active = true`, and `settings` — the menu and branding needed to render the public QR page.
-  - `INSERT` into `orders` only when `source = 'customer_qr'` AND `status = 'awaiting_payment'` AND `cashier_id / payment_method / approved_at` are all null. This means customers can create new pending orders but can't spoof paid / approved orders.
-  - `INSERT` into `order_items` only when the parent order is a public QR order.
-  - `SELECT` individual orders/items by id (for the status-polling page). UUIDs are unguessable.
-- `staff` table (including PIN hashes) has **no** `anon` policies, so it is unreadable over the public API.
-- Authenticated sessions retain full access — staff workflows are unchanged.
-- Running the updated schema is idempotent; the old loose policies are dropped at the top of the file.
+## Edge Function — `invite-staff`
 
-### 2. PIN hashing upgraded to PBKDF2-SHA256
+Deployed with:
 
-- New PINs are hashed with PBKDF2-SHA256, 150 000 iterations, 16-byte random salt, 256-bit output (see `src/lib/utils.ts` → `hashPinPBKDF2` / `verifyPinPBKDF2`).
-- Verification uses a length-safe, constant-time string comparison to mitigate timing attacks.
-- Existing unsalted SHA-256 hashes are transparently **upgraded on next successful login** — the legacy hash is verified once, then re-hashed with PBKDF2 and the record is rewritten. No user-visible migration step.
-
-### 3. Login rate limiting & lockout
-
-- 5 failed PIN attempts within a 15-minute window lock the login for 15 minutes (see `src/lib/security.ts`).
-- The Login UI shows a live countdown to the user.
-- Successful logins clear the counter.
-
-### 4. Forced PIN change for default admin
-
-- The seed admin row now has `must_change_pin = true`.
-- Any authenticated route wrapped in `ProtectedRoute` renders a blocking **Set a new PIN** modal while this flag is true; the user cannot reach the admin / cashier screens until they pick a new PIN.
-- The modal rejects empty PINs, mismatched confirmations, and the literal string `1234`.
-
-### 5. Input validation everywhere
-
-- `sanitizeQuantity`, `sanitizePrice`, `sanitizeDiscount`, `clampNumber`, and `sanitizeTableId` live in `src/lib/utils.ts` / `src/lib/security.ts` and are used inside `orderStore` (not just at the UI layer) so programmatic callers can't bypass them.
-- `sanitizeTableId` strips everything but `[a-zA-Z0-9_\- ]`, caps at 32 chars, and rejects empty values — so a malicious QR can't carry weird unicode or path tricks into storage.
-- Discounts are clamped `0 <= discount <= subtotal`. Negative / NaN values resolve to 0.
-- Quantities are positive integers capped at 999.
-- Prices are non-negative and capped at 1 000 000.
-
-### 6. Scoped backup import
-
-- Admin → Settings → Import now:
-  - Rejects files larger than 5 MB.
-  - Requires the parsed JSON to be a non-array plain object.
-  - Accepts only keys that start with `xevora_pos_` and only string values.
-  - Clears the existing `xevora_pos_*` keys before import so a partial / malformed backup can't leave half-migrated state.
-
-### 7. Security headers
-
-`index.html` now ships with:
-
-```
-Content-Security-Policy: default-src 'self'; img-src 'self' data: blob:;
-                         style-src 'self' 'unsafe-inline'; script-src 'self';
-                         font-src 'self' data:; connect-src 'self' https:;
-                         frame-ancestors 'none'; base-uri 'self'; form-action 'self';
-X-Content-Type-Options: nosniff
-Referrer-Policy: strict-origin-when-cross-origin
+```bash
+supabase functions deploy invite-staff --no-verify-jwt
+supabase secrets set PUBLIC_SITE_URL=https://pos.example.com
 ```
 
-`frame-ancestors 'none'` blocks clickjacking.  
-`connect-src` allows same-origin + any HTTPS host so Supabase still works.  
-`'unsafe-inline'` is only kept for `style-src` because Tailwind 4 relies on inline styles; it is **not** set for `script-src`.
+Key properties:
 
-When deploying behind a reverse proxy (Nginx, Caddy, Cloudflare), it is recommended to also send `Strict-Transport-Security`, `X-Frame-Options: DENY`, and `Permissions-Policy` as HTTP headers. The meta-tag CSP here is a defence in depth, not a replacement for server-level headers.
+- Never exposed the `SUPABASE_SERVICE_ROLE_KEY` to the client.
+- Verifies the caller's JWT by calling `supabase.auth.getUser(jwt)` with the admin client, then confirms the caller has an active admin `staff` row.
+- Supports two actions: `invite` (create auth user + staff row + send invite email) and `delete` (revoke auth user + delete staff row).
+- Idempotent on re-invite: if the email already exists in `auth.users`, the function reuses it and updates the staff row.
 
-### 8. Clean separation of customer vs. staff order surfaces
+## Input validation
 
-Customer-submitted orders enter the system with `status='awaiting_payment'` and `source='customer_qr'`. They are:
+- Email format is validated client-side (`isValidEmail`) and server-side in the Edge Function before calling `inviteUserByEmail`.
+- Passwords must be ≥ 8 characters on the client (`isValidPassword`); Supabase enforces its own policy server-side.
+- Product prices, order subtotals, tax, discounts are constrained by `CHECK (>= 0)` in Postgres. `discount` on the POS is clamped to `[0, subtotal]` client-side too.
+- Order item quantities are `CHECK (quantity > 0 AND quantity <= 999)`.
+- Table labels are sanitised against the regex `/^[A-Za-z0-9._-]{1,32}$/` before being written or used to build QR URLs (`sanitizeTableId` in `src/lib/utils.ts`).
+- Backup import on `Settings → Impor cadangan` is size-capped at 5 MB and only accepts a fixed allow-list of keys. Unknown keys are dropped.
 
-- Invisible to the kitchen display (which filters on `pending`/`preparing`).
-- Listed on a dedicated cashier page (**Pending Payments**) with an explicit **Accept & Pay** button.
-- Only released into the kitchen pipeline once a cashier records a real payment and a wait-time estimate.
+## Browser-level hardening (`index.html`)
 
-This enforces the business rule "a customer cannot skip the cashier" at the data-flow level, not just in the UI.
+- `<meta http-equiv="Content-Security-Policy">` blocks all inline scripts, restricts connect-src to the Supabase URL, disables plugins, and sets `frame-ancestors 'none'` so the app cannot be iframed (clickjacking).
+- `X-Content-Type-Options: nosniff`, `Referrer-Policy: no-referrer`, and `X-Frame-Options: DENY` are set via meta tags (reinforce the Nginx/Caddy headers recommended in README).
 
-## Operational recommendations
+## Operational notes
 
-- **Don't reuse the default admin PIN.** First login will now force you to pick a new one; this is intentional.
-- **Use a unique Supabase project per deployment.** The `anon` key is public; RLS is the wall.
-- **Serve the app over HTTPS** (GitHub Pages and most hosts do this by default). The CSP and hashing assume a secure transport.
-- **Back up regularly** using the Settings → Backup button. Keep backups somewhere private — they contain PIN hashes.
-- **Rotate staff PINs** from Admin → Staff. Delete departed staff rather than leaving their accounts active.
+- The service role key must **only** live as a Supabase project secret. Never put it in `.env.local` / `vite` env vars (anything with `VITE_` prefix is inlined into the client bundle).
+- For VPS deployments, terminate TLS at Nginx/Caddy and keep Supabase behind the same Nginx (same-origin), which sidesteps CORS and ensures only your domain can reach the API with browser CORS rules.
+- When a staff member leaves, an admin should click **Hapus** in the Staff page (or flip **Nonaktifkan**). Both flows call the Edge Function; deleting the auth user invalidates any still-open refresh tokens.
+
+## Changelog vs. the previous PIN build
+
+- ❌ Removed: 4-digit PIN auth, `pin_hash` / `pin_salt` / `pin_algo` / `must_change_pin` columns, default admin PIN `1234`, `ChangePinModal` forced reset.
+- ✅ Replaced with: Supabase Auth (email + password), per-user `auth.uid()` tracking, role-based RLS via `is_admin()` / `is_staff()`, Edge Function for staff invites.
+- ✅ Kept: login rate limiting, input validation, CSP + security headers, unguessable order UUIDs, backup-import allow-list.

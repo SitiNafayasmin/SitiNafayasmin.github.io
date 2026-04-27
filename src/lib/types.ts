@@ -78,15 +78,18 @@ export interface Shift {
 
 export type StaffRole = 'admin' | 'cashier'
 
+/**
+ * Staff record in the app database. Authentication is handled by Supabase Auth;
+ * this row links an auth.users row to an app-level role, display name, and
+ * activation flag.
+ */
 export interface Staff {
   id: string
+  user_id: string | null
+  email: string
   name: string
   role: StaffRole
-  pin_hash: string
-  pin_salt: string | null
-  pin_algo: 'pbkdf2-sha256' | 'sha256-legacy'
   active: boolean
-  must_change_pin: boolean
   created_at: string
 }
 

@@ -2,8 +2,7 @@ import { getItem, setItem } from './localStorage'
 
 export const MAX_LOGIN_ATTEMPTS = 5
 export const LOGIN_LOCKOUT_MS = 15 * 60 * 1000 // 15 minutes
-export const MIN_PIN_LENGTH = 4
-export const MAX_PIN_LENGTH = 8
+export const MIN_PASSWORD_LENGTH = 8
 
 interface LoginLockout {
   failures: number
@@ -51,8 +50,12 @@ export function clearLoginFailures(): void {
   setLockout({ failures: 0, firstFailureAt: 0, lockedUntil: null })
 }
 
-export function isValidPinFormat(pin: string): boolean {
-  return /^\d+$/.test(pin) && pin.length >= MIN_PIN_LENGTH && pin.length <= MAX_PIN_LENGTH
+export function isValidEmail(email: string): boolean {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())
+}
+
+export function isValidPassword(password: string): boolean {
+  return typeof password === 'string' && password.length >= MIN_PASSWORD_LENGTH
 }
 
 /** Validate a discount amount against a subtotal; never negative, never > subtotal. */

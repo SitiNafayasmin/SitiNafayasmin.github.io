@@ -8,6 +8,7 @@ import { useTableStore } from '../../stores/tableStore'
 import type { Product } from '../../lib/types'
 import { formatCurrency, sanitizeTableId } from '../../lib/utils'
 import { Button, Card, Input } from '../../components/ui/primitives'
+import { t } from '../../lib/i18n'
 
 interface LineItem {
   product: Product
@@ -37,7 +38,7 @@ export function CustomerMenu() {
   const [notes, setNotes] = useState('')
   const [submitting, setSubmitting] = useState(false)
 
-  const tableKnown = tables.some((t) => t.label === safeTable && t.active)
+  const tableKnown = tables.some((table) => table.label === safeTable && table.active)
 
   const filteredProducts = useMemo(() => {
     const available = products.filter((p) => p.available)
@@ -80,7 +81,7 @@ export function CustomerMenu() {
     })
     setSubmitting(false)
     if (!order) {
-      alert('Could not submit order. Please try again.')
+      alert(t.customer.submitFailed)
       return
     }
     navigate(`/order/${encodeURIComponent(safeTable)}/status/${order.id}`)
@@ -90,7 +91,7 @@ export function CustomerMenu() {
     return (
       <CustomerShell>
         <Card>
-          <p className="text-slate-700">Invalid table code. Please scan the QR again.</p>
+          <p className="text-slate-700">{t.customer.invalidTable}</p>
         </Card>
       </CustomerShell>
     )
@@ -101,16 +102,16 @@ export function CustomerMenu() {
       <div className="mb-6 flex items-center justify-between">
         <div>
           <p className="text-sm text-indigo-100/80">{settings.business_name}</p>
-          <h1 className="text-2xl font-bold text-white">Table {safeTable}</h1>
+          <h1 className="text-2xl font-bold text-white">{t.admin.tables.tableLabel} {safeTable}</h1>
           {!tableKnown && (
             <p className="mt-1 text-xs text-amber-300">
-              Table not yet registered — please notify staff.
+              {t.customer.tableNotRegistered}
             </p>
           )}
         </div>
         <div className="rounded-full bg-white/10 px-4 py-2 text-sm text-white backdrop-blur">
           <Utensils size={16} className="mr-1.5 inline" />
-          Dine-in
+          {t.customer.dineIn}
         </div>
       </div>
 
@@ -124,7 +125,7 @@ export function CustomerMenu() {
                 : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
             }`}
           >
-            All
+            {t.common.all}
           </button>
           {categories.map((cat) => (
             <button
@@ -144,7 +145,7 @@ export function CustomerMenu() {
 
         {filteredProducts.length === 0 ? (
           <p className="p-8 text-center text-sm text-slate-400">
-            No items available right now.
+            {t.customer.empty}
           </p>
         ) : (
           <ul className="divide-y divide-slate-100">
@@ -181,7 +182,7 @@ export function CustomerMenu() {
                     </div>
                   ) : (
                     <Button onClick={() => changeQty(product, 1)} size="sm">
-                      <Plus size={14} /> Add
+                      <Plus size={14} /> {t.customer.add}
                     </Button>
                   )}
                 </li>
@@ -193,7 +194,7 @@ export function CustomerMenu() {
 
       {items.length > 0 && (
         <Card className="mt-6">
-          <h3 className="mb-3 font-semibold text-slate-900">Your Order</h3>
+          <h3 className="mb-3 font-semibold text-slate-900">{t.customer.yourOrder}</h3>
           <ul className="mb-4 space-y-2 text-sm">
             {items.map((i) => (
               <li key={i.product.id} className="flex justify-between text-slate-700">
@@ -206,28 +207,28 @@ export function CustomerMenu() {
           </ul>
           <dl className="space-y-1 border-t border-slate-200 pt-3 text-sm">
             <div className="flex justify-between text-slate-600">
-              <dt>Subtotal</dt>
+              <dt>{t.common.subtotal}</dt>
               <dd>{formatCurrency(totals.subtotal, settings.currency)}</dd>
             </div>
             <div className="flex justify-between text-slate-600">
-              <dt>Tax ({settings.tax_rate}%)</dt>
+              <dt>{t.common.tax} ({settings.tax_rate}%)</dt>
               <dd>{formatCurrency(totals.tax, settings.currency)}</dd>
             </div>
             <div className="flex justify-between border-t border-slate-200 pt-2 text-base font-semibold text-slate-900">
-              <dt>Total</dt>
+              <dt>{t.common.total}</dt>
               <dd>{formatCurrency(totals.total, settings.currency)}</dd>
             </div>
           </dl>
 
           <div className="mt-4 grid gap-3">
             <Input
-              placeholder="Your name (optional)"
+              placeholder={t.customer.namePlaceholder}
               value={customerName}
               onChange={(e) => setCustomerName(e.target.value)}
               maxLength={64}
             />
             <Input
-              placeholder="Special requests (optional)"
+              placeholder={t.customer.notesPlaceholder}
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
               maxLength={200}
@@ -241,11 +242,11 @@ export function CustomerMenu() {
             disabled={submitting}
           >
             <ShoppingBag size={18} />
-            Place Order ({itemCount} {itemCount === 1 ? 'item' : 'items'}) ·{' '}
+            {t.customer.placeOrder} ({t.customer.itemsCount(itemCount)}) ·{' '}
             {formatCurrency(totals.total, settings.currency)}
           </Button>
           <p className="mt-3 text-center text-xs text-slate-500">
-            You&apos;ll pay at the cashier. This does not charge your phone.
+            {t.customer.paymentHint}
           </p>
         </Card>
       )}

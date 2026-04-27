@@ -12,9 +12,9 @@ const DEFAULT_SETTINGS: Settings = {
   id: 'default',
   business_name: 'Xevora POS',
   address: '',
-  tax_rate: 6,
-  receipt_footer: 'Thank you for your purchase!',
-  currency: 'MYR',
+  tax_rate: 11,
+  receipt_footer: 'Terima kasih atas kunjungan Anda!',
+  currency: 'IDR',
   default_wait_minutes: 15,
 }
 

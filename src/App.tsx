@@ -6,9 +6,12 @@ import { useOrderStore } from './stores/orderStore'
 import { useShiftStore } from './stores/shiftStore'
 import { useSettingsStore } from './stores/settingsStore'
 import { useTableStore } from './stores/tableStore'
+import type { StaffRole } from './lib/types'
+import { t } from './lib/i18n'
 
 import { Landing } from './pages/Landing'
 import { Login } from './pages/Login'
+import { ResetPassword } from './pages/ResetPassword'
 import { AdminLayout } from './components/layout/AdminLayout'
 import { AdminDashboard } from './pages/admin/Dashboard'
 import { AdminProducts } from './pages/admin/Products'
@@ -24,30 +27,19 @@ import { PendingPayments } from './pages/cashier/PendingPayments'
 import { KitchenDisplay } from './pages/kitchen/KitchenDisplay'
 import { CustomerMenu } from './pages/customer/CustomerMenu'
 import { CustomerOrderStatus } from './pages/customer/OrderStatus'
-import { ChangePinModal } from './components/ChangePinModal'
 
 function ProtectedRoute({
   children,
   requiredRole,
 }: {
   children: React.ReactNode
-  requiredRole?: string
+  requiredRole?: StaffRole
 }) {
   const currentUser = useAuthStore((s) => s.currentUser)
   if (!currentUser) return <Navigate to="/" replace />
-  if (requiredRole && currentUser.role !== requiredRole) return <Navigate to="/" replace />
-
-  if (currentUser.must_change_pin) {
-    // Block access behind a modal until the user sets a new PIN. The modal is
-    // self-managed (calls changePin which flips must_change_pin off).
-    return (
-      <>
-        {children}
-        <ChangePinModal onComplete={() => { /* store update re-renders this */ }} />
-      </>
-    )
+  if (requiredRole && currentUser.role !== requiredRole) {
+    return <Navigate to="/" replace />
   }
-
   return <>{children}</>
 }
 
@@ -72,7 +64,7 @@ export default function App() {
   if (!initialized) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-slate-950">
-        <div className="text-xl text-slate-200">Loading...</div>
+        <div className="text-xl text-slate-200">{t.common.loading}</div>
       </div>
     )
   }
@@ -82,6 +74,7 @@ export default function App() {
       <Routes>
         <Route path="/" element={<Landing />} />
         <Route path="/login" element={<Login />} />
+        <Route path="/reset-password" element={<ResetPassword />} />
 
         <Route
           path="/admin"

@@ -1,5 +1,7 @@
 import { forwardRef, type ButtonHTMLAttributes, type HTMLAttributes, type InputHTMLAttributes } from 'react'
+import { Loader2 } from 'lucide-react'
 import { cn } from '../../lib/utils'
+import { t } from '../../lib/i18n'
 
 type ButtonVariant = 'primary' | 'secondary' | 'ghost' | 'danger' | 'success' | 'outline'
 type ButtonSize = 'sm' | 'md' | 'lg'
@@ -23,12 +25,14 @@ const SIZE_CLASSES: Record<ButtonSize, string> = {
 interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   variant?: ButtonVariant
   size?: ButtonSize
+  loading?: boolean
 }
 
 export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
-  ({ className, variant = 'primary', size = 'md', ...props }, ref) => (
+  ({ className, variant = 'primary', size = 'md', loading = false, disabled, children, ...props }, ref) => (
     <button
       ref={ref}
+      disabled={disabled || loading}
       className={cn(
         'inline-flex items-center justify-center gap-2 rounded-lg font-medium',
         'transition-all duration-150',
@@ -39,7 +43,10 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
         className,
       )}
       {...props}
-    />
+    >
+      {loading && <Loader2 size={16} className="animate-spin" />}
+      {children}
+    </button>
   ),
 )
 Button.displayName = 'Button'
@@ -63,14 +70,23 @@ Input.displayName = 'Input'
 
 interface CardProps extends HTMLAttributes<HTMLDivElement> {
   padded?: boolean
+  padding?: 'none' | 'sm' | 'md' | 'lg'
 }
 
-export function Card({ className, padded = true, ...props }: CardProps) {
+const CARD_PADDING: Record<NonNullable<CardProps['padding']>, string> = {
+  none: '',
+  sm: 'p-3',
+  md: 'p-4',
+  lg: 'p-6',
+}
+
+export function Card({ className, padded = true, padding, ...props }: CardProps) {
+  const padClass = padding !== undefined ? CARD_PADDING[padding] : padded ? 'p-6' : ''
   return (
     <div
       className={cn(
         'rounded-2xl border border-slate-200 bg-white shadow-sm',
-        padded && 'p-6',
+        padClass,
         className,
       )}
       {...props}
@@ -91,19 +107,22 @@ const BADGE_CLASSES: Record<BadgeTone, string> = {
 }
 
 export function Badge({
-  tone = 'slate',
+  tone,
+  color,
   className,
   children,
 }: {
   tone?: BadgeTone
+  color?: BadgeTone
   className?: string
   children: React.ReactNode
 }) {
+  const effectiveTone: BadgeTone = tone ?? color ?? 'slate'
   return (
     <span
       className={cn(
         'inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium ring-1 ring-inset',
-        BADGE_CLASSES[tone],
+        BADGE_CLASSES[effectiveTone],
         className,
       )}
     >
@@ -160,12 +179,12 @@ const ORDER_STATUS_TONE: Record<string, BadgeTone> = {
 }
 
 const ORDER_STATUS_LABEL: Record<string, string> = {
-  awaiting_payment: 'Awaiting Payment',
-  pending: 'Pending',
-  preparing: 'Preparing',
-  ready: 'Ready',
-  completed: 'Completed',
-  cancelled: 'Cancelled',
+  awaiting_payment: t.order.status.awaiting_payment,
+  pending: t.order.status.pending,
+  preparing: t.order.status.preparing,
+  ready: t.order.status.ready,
+  completed: t.order.status.completed,
+  cancelled: t.order.status.cancelled,
 }
 
 export function OrderStatusBadge({ status }: { status: string }) {

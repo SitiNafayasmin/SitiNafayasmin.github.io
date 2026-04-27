@@ -1,24 +1,25 @@
 import { useNavigate } from 'react-router-dom'
 import { Monitor, ShieldCheck, Sparkles, UtensilsCrossed } from 'lucide-react'
+import { t } from '../lib/i18n'
 
 const ROLES = [
   {
-    label: 'Admin',
-    description: 'Manage menu, staff, tables & reports.',
+    label: t.landing.adminLabel,
+    description: t.landing.adminDesc,
     icon: ShieldCheck,
     path: '/login?role=admin',
     accent: 'from-indigo-500 to-violet-600',
   },
   {
-    label: 'Cashier',
-    description: 'Take orders, confirm payments, manage shifts.',
+    label: t.landing.cashierLabel,
+    description: t.landing.cashierDesc,
     icon: Monitor,
     path: '/login?role=cashier',
     accent: 'from-emerald-500 to-teal-600',
   },
   {
-    label: 'Kitchen',
-    description: 'Live queue of paid orders to prepare.',
+    label: t.landing.kitchenLabel,
+    description: t.landing.kitchenDesc,
     icon: UtensilsCrossed,
     path: '/kitchen',
     accent: 'from-orange-500 to-rose-600',
@@ -47,14 +48,12 @@ export function Landing() {
       <div className="relative mx-auto flex min-h-screen max-w-5xl flex-col items-center justify-center px-4 py-16">
         <div className="mb-12 text-center">
           <span className="inline-flex items-center gap-1.5 rounded-full bg-white/10 px-3 py-1 text-xs font-medium text-indigo-200 ring-1 ring-inset ring-white/10">
-            <Sparkles size={12} /> Modern POS
+            <Sparkles size={12} /> {t.landing.badge}
           </span>
           <h1 className="mt-4 bg-gradient-to-br from-white via-indigo-100 to-indigo-300 bg-clip-text text-5xl font-bold tracking-tight text-transparent sm:text-6xl">
             Xevora POS
           </h1>
-          <p className="mt-3 text-lg text-slate-400">
-            A secure, QR-enabled Point of Sale for modern restaurants.
-          </p>
+          <p className="mt-3 text-lg text-slate-400">{t.landing.tagline}</p>
         </div>
 
         <div className="grid w-full grid-cols-1 gap-4 sm:grid-cols-3">
@@ -81,10 +80,7 @@ export function Landing() {
           ))}
         </div>
 
-        <p className="mt-12 text-center text-xs text-slate-500">
-          First-time admins: default PIN is <span className="font-mono text-slate-300">1234</span>
-          {' '}— you&apos;ll be asked to change it on login.
-        </p>
+        <p className="mt-12 text-center text-xs text-slate-500">{t.landing.firstAdminHint}</p>
       </div>
     </div>
   )

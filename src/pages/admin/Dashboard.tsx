@@ -4,6 +4,7 @@ import { useOrderStore } from '../../stores/orderStore'
 import { useShiftStore } from '../../stores/shiftStore'
 import { useAuthStore } from '../../stores/authStore'
 import { formatCurrency } from '../../lib/utils'
+import { t } from '../../lib/i18n'
 
 export function AdminDashboard() {
   const orders = useOrderStore((s) => s.orders)
@@ -39,50 +40,50 @@ export function AdminDashboard() {
 
   return (
     <div>
-      <h2 className="text-2xl font-bold text-gray-800 mb-6">Dashboard</h2>
+      <h2 className="text-2xl font-bold text-gray-800 mb-6">{t.admin.dashboard.title}</h2>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
         <StatCard
           icon={<DollarSign size={24} />}
-          label="Today's Revenue"
+          label={t.admin.dashboard.todaySales}
           value={formatCurrency(stats.todayRevenue)}
           color="bg-green-500"
         />
         <StatCard
           icon={<ShoppingCart size={24} />}
-          label="Today's Orders"
+          label={t.admin.dashboard.todayOrders}
           value={String(stats.todayOrders)}
           color="bg-blue-500"
         />
         <StatCard
           icon={<TrendingUp size={24} />}
-          label="Total Revenue"
+          label={t.admin.dashboard.totalRevenue}
           value={formatCurrency(stats.totalRevenue)}
           color="bg-purple-500"
         />
         <StatCard
           icon={<Users size={24} />}
-          label="Active Staff"
+          label={t.admin.dashboard.activeStaff}
           value={String(stats.activeStaff)}
           color="bg-orange-500"
         />
       </div>
 
       <div className="bg-white rounded-xl shadow-sm p-6">
-        <h3 className="text-lg font-semibold text-gray-800 mb-4">Recent Orders</h3>
+        <h3 className="text-lg font-semibold text-gray-800 mb-4">{t.admin.dashboard.recentOrders}</h3>
         {recentOrders.length === 0 ? (
-          <p className="text-gray-400 text-center py-8">No orders yet</p>
+          <p className="text-gray-400 text-center py-8">{t.admin.dashboard.noRecentOrders}</p>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b text-left text-gray-500">
                   <th className="pb-3 font-medium">#</th>
-                  <th className="pb-3 font-medium">Type</th>
-                  <th className="pb-3 font-medium">Items</th>
-                  <th className="pb-3 font-medium">Total</th>
-                  <th className="pb-3 font-medium">Status</th>
-                  <th className="pb-3 font-medium">Cashier</th>
+                  <th className="pb-3 font-medium">{t.admin.orders.cashier /* reuse */}</th>
+                  <th className="pb-3 font-medium">{t.common.items}</th>
+                  <th className="pb-3 font-medium">{t.common.total}</th>
+                  <th className="pb-3 font-medium">{t.common.status}</th>
+                  <th className="pb-3 font-medium">{t.admin.orders.cashier}</th>
                 </tr>
               </thead>
               <tbody>
@@ -90,7 +91,7 @@ export function AdminDashboard() {
                   <tr key={order.id} className="border-b last:border-0">
                     <td className="py-3 font-mono">#{order.order_number}</td>
                     <td className="py-3 capitalize">{order.order_type.replace('_', ' ')}</td>
-                    <td className="py-3">{order.items.length} items</td>
+                    <td className="py-3">{order.items.length} {t.common.item}</td>
                     <td className="py-3 font-medium">{formatCurrency(order.total)}</td>
                     <td className="py-3">
                       <OrderStatusBadge status={order.status} />

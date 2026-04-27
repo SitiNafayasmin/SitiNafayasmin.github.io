@@ -11,15 +11,16 @@ import {
 } from 'lucide-react'
 import { useAuthStore } from '../../stores/authStore'
 import { useSettingsStore } from '../../stores/settingsStore'
+import { t } from '../../lib/i18n'
 
 const NAV_ITEMS = [
-  { to: '/admin', icon: LayoutDashboard, label: 'Dashboard', end: true },
-  { to: '/admin/products', icon: Package, label: 'Products', end: false },
-  { to: '/admin/orders', icon: ClipboardList, label: 'Orders', end: false },
-  { to: '/admin/tables', icon: QrCode, label: 'Tables & QR', end: false },
-  { to: '/admin/reports', icon: BarChart3, label: 'Reports', end: false },
-  { to: '/admin/staff', icon: Users, label: 'Staff', end: false },
-  { to: '/admin/settings', icon: Settings, label: 'Settings', end: false },
+  { to: '/admin', icon: LayoutDashboard, label: t.admin.nav.dashboard, end: true },
+  { to: '/admin/products', icon: Package, label: t.admin.nav.products, end: false },
+  { to: '/admin/orders', icon: ClipboardList, label: t.admin.nav.orders, end: false },
+  { to: '/admin/tables', icon: QrCode, label: t.admin.nav.tables, end: false },
+  { to: '/admin/reports', icon: BarChart3, label: t.admin.nav.reports, end: false },
+  { to: '/admin/staff', icon: Users, label: t.admin.nav.staff, end: false },
+  { to: '/admin/settings', icon: Settings, label: t.admin.nav.settings, end: false },
 ]
 
 export function AdminLayout() {
@@ -32,7 +33,7 @@ export function AdminLayout() {
       <aside className="flex w-64 flex-col bg-white shadow-sm ring-1 ring-slate-200">
         <div className="border-b border-slate-200 p-6">
           <h1 className="text-lg font-bold text-slate-900">{businessName}</h1>
-          <p className="text-xs uppercase tracking-wider text-slate-500">Admin Panel</p>
+          <p className="text-xs uppercase tracking-wider text-slate-500">{t.admin.panelSubtitle}</p>
         </div>
         <nav className="flex-1 space-y-1 p-4">
           {NAV_ITEMS.map(({ to, icon: Icon, label, end }) => (
@@ -65,7 +66,7 @@ export function AdminLayout() {
             className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-rose-600 transition hover:bg-rose-50"
           >
             <LogOut size={18} />
-            Logout
+            {t.common.logout}
           </button>
         </div>
       </aside>

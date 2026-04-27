@@ -75,26 +75,33 @@ export async function verifyPinPBKDF2(
   return timingSafeEqual(actual, expectedHex)
 }
 
-export function formatCurrency(amount: number, currency = 'MYR'): string {
+/**
+ * Format an amount in IDR by default (Indonesian Rupiah, no decimals),
+ * respecting any currency code set by the admin in Settings.
+ */
+export function formatCurrency(amount: number, currency = 'IDR'): string {
+  const digits = currency === 'IDR' ? 0 : 2
   try {
-    return new Intl.NumberFormat('en-MY', {
+    return new Intl.NumberFormat('id-ID', {
       style: 'currency',
       currency,
+      minimumFractionDigits: digits,
+      maximumFractionDigits: digits,
     }).format(amount)
   } catch {
-    return `${currency} ${amount.toFixed(2)}`
+    return `${currency} ${amount.toFixed(digits)}`
   }
 }
 
 export function formatDateTime(dateString: string): string {
-  return new Date(dateString).toLocaleString('en-MY', {
+  return new Date(dateString).toLocaleString('id-ID', {
     dateStyle: 'medium',
     timeStyle: 'short',
   })
 }
 
 export function formatTime(dateString: string): string {
-  return new Date(dateString).toLocaleTimeString('en-MY', {
+  return new Date(dateString).toLocaleTimeString('id-ID', {
     timeStyle: 'short',
   })
 }

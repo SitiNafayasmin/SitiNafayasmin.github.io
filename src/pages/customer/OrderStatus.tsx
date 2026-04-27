@@ -5,6 +5,7 @@ import { useOrderStore } from '../../stores/orderStore'
 import { useSettingsStore } from '../../stores/settingsStore'
 import { formatCurrency, sanitizeTableId } from '../../lib/utils'
 import { Button, Card } from '../../components/ui/primitives'
+import { t } from '../../lib/i18n'
 
 export function CustomerOrderStatus() {
   const { tableId, orderId } = useParams<{ tableId: string; orderId: string }>()
@@ -33,11 +34,11 @@ export function CustomerOrderStatus() {
       <Shell>
         <Card>
           <p className="text-slate-700">
-            Order not found. It may have been removed.
+            {t.customer.orderNotFound}
           </p>
           {safeTable && (
             <Link to={`/order/${encodeURIComponent(safeTable)}`}>
-              <Button className="mt-4">Back to Menu</Button>
+              <Button className="mt-4">{t.customer.backToMenu}</Button>
             </Link>
           )}
         </Card>
@@ -50,15 +51,15 @@ export function CustomerOrderStatus() {
       <div className="mb-6 text-center">
         <p className="text-sm text-indigo-100/80">{settings.business_name}</p>
         <h1 className="text-2xl font-bold text-white">
-          Order #{order.order_number}
+          {t.customer.orderNumberLabel}{order.order_number}
         </h1>
-        <p className="mt-1 text-sm text-indigo-200">Table {order.table_number}</p>
+        <p className="mt-1 text-sm text-indigo-200">{t.admin.tables.tableLabel} {order.table_number}</p>
       </div>
 
       <StatusCard order={order} currency={settings.currency} />
 
       <Card className="mt-6">
-        <h3 className="mb-3 font-semibold text-slate-900">Items</h3>
+        <h3 className="mb-3 font-semibold text-slate-900">{t.common.items}</h3>
         <ul className="space-y-2 text-sm">
           {order.items.map((item) => (
             <li key={item.id} className="flex justify-between text-slate-700">
@@ -71,15 +72,15 @@ export function CustomerOrderStatus() {
         </ul>
         <dl className="mt-4 space-y-1 border-t border-slate-200 pt-3 text-sm">
           <div className="flex justify-between text-slate-600">
-            <dt>Subtotal</dt>
+            <dt>{t.common.subtotal}</dt>
             <dd>{formatCurrency(order.subtotal, settings.currency)}</dd>
           </div>
           <div className="flex justify-between text-slate-600">
-            <dt>Tax</dt>
+            <dt>{t.common.tax}</dt>
             <dd>{formatCurrency(order.tax, settings.currency)}</dd>
           </div>
           <div className="flex justify-between border-t border-slate-200 pt-2 text-base font-semibold text-slate-900">
-            <dt>Total</dt>
+            <dt>{t.common.total}</dt>
             <dd>{formatCurrency(order.total, settings.currency)}</dd>
           </div>
         </dl>
@@ -91,7 +92,7 @@ export function CustomerOrderStatus() {
             to={`/order/${encodeURIComponent(safeTable)}`}
             className="text-sm text-indigo-200 underline underline-offset-4 hover:text-white"
           >
-            Order more items
+            {t.customer.orderMore}
           </Link>
         </div>
       )}
@@ -115,15 +116,15 @@ function StatusCard({
           </div>
           <div className="flex-1">
             <h2 className="text-lg font-semibold text-amber-900">
-              Please pay at the cashier
+              {t.customer.payAtCashier}
             </h2>
             <p className="mt-1 text-sm text-amber-900/80">
-              Show this screen or your pickup code to the cashier to confirm your order.
+              {t.customer.payHint}
             </p>
             {order.pickup_code && (
               <div className="mt-4 rounded-xl bg-white p-4 text-center ring-1 ring-amber-200">
                 <p className="text-xs uppercase tracking-wider text-amber-700">
-                  Pickup Code
+                  {t.customer.pickupCode}
                 </p>
                 <p className="mt-1 font-mono text-3xl font-bold text-amber-900">
                   {order.pickup_code}
@@ -131,7 +132,7 @@ function StatusCard({
               </div>
             )}
             <p className="mt-3 text-sm text-amber-900/80">
-              Amount due:{' '}
+              {t.customer.amountDue}{' '}
               <span className="font-semibold">
                 {formatCurrency(order.total, currency)}
               </span>
@@ -150,9 +151,9 @@ function StatusCard({
             <XCircle size={28} />
           </div>
           <div>
-            <h2 className="text-lg font-semibold text-rose-900">Order cancelled</h2>
+            <h2 className="text-lg font-semibold text-rose-900">{t.customer.cancelled}</h2>
             <p className="mt-1 text-sm text-rose-900/80">
-              If this was unexpected, please speak to the cashier.
+              {t.customer.cancelledHint}
             </p>
           </div>
         </div>
@@ -162,12 +163,12 @@ function StatusCard({
 
   const successCopy =
     order.status === 'ready'
-      ? 'Your order is ready! Please head to the counter.'
+      ? t.customer.ready
       : order.status === 'completed'
-        ? 'Enjoy your meal!'
+        ? t.customer.enjoy
         : order.status === 'preparing'
-          ? 'The kitchen is preparing your order.'
-          : 'Payment confirmed! Your order is on the way.'
+          ? t.customer.preparing
+          : t.customer.paymentConfirmed
 
   return (
     <Card className="border-emerald-300 bg-gradient-to-br from-emerald-50 to-white">
@@ -177,21 +178,21 @@ function StatusCard({
         </div>
         <div className="flex-1">
           <p className="text-xs font-semibold uppercase tracking-wider text-emerald-700">
-            Successful
+            {t.customer.successful}
           </p>
           <h2 className="text-lg font-semibold text-emerald-900">{successCopy}</h2>
           <div className="mt-4 grid grid-cols-2 gap-3">
             <div className="rounded-xl bg-white p-3 ring-1 ring-emerald-200">
-              <p className="text-xs text-emerald-700">Order #</p>
+              <p className="text-xs text-emerald-700">{t.customer.orderNumber}</p>
               <p className="text-2xl font-bold text-emerald-900">#{order.order_number}</p>
             </div>
             <div className="rounded-xl bg-white p-3 ring-1 ring-emerald-200">
               <p className="text-xs text-emerald-700 flex items-center gap-1">
-                <Clock size={12} /> Est. wait
+                <Clock size={12} /> {t.customer.estWait}
               </p>
               <p className="text-2xl font-bold text-emerald-900">
                 {order.estimated_wait_minutes ?? 15}
-                <span className="text-sm font-medium text-emerald-700"> min</span>
+                <span className="text-sm font-medium text-emerald-700"> {t.common.minShort}</span>
               </p>
             </div>
           </div>

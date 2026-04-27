@@ -1,25 +1,52 @@
--- Xevora POS - Supabase Database Schema
--- Run this SQL in your Supabase SQL Editor to set up the database tables.
+-- Xevora POS — Supabase schema (Supabase Auth, IDR, Bahasa Indonesia build)
 --
--- SECURITY NOTE
--- The previous revision of this schema enabled Row Level Security (RLS) but
--- defined `FOR ALL USING (true)` policies on every table, which is equivalent
--- to disabling RLS entirely. With the publishable anon key embedded in the
--- client bundle, that effectively grants the public full read/write access
--- to every table — including `staff.pin_hash`.
+-- This schema is designed for a personal VPS deployment where auth is
+-- handled entirely by Supabase Auth. Each cashier/admin has a unique email
+-- + password; the `staff` table maps auth.users → app role + display name.
 --
--- The policies below tighten the surface so that an unauthenticated
--- (anon-key) session can:
---   * read the menu (categories, products, active tables) and settings
---   * insert new customer orders (awaiting payment) and their items
---   * read only its own in-flight order by id (so the status page works)
+-- Run this in the Supabase SQL editor (or via `supabase db push`) on a fresh
+-- project. The `invite-staff` Edge Function (supabase/functions/invite-staff)
+-- provisions new staff; do not allow the anon role to write to `staff`.
 --
--- Staff sessions (authenticated role) retain full access. In production you
--- should front sensitive reads/writes with a Postgres function (SECURITY
--- DEFINER) or move staff auth behind Supabase Auth and further tighten
--- these policies.
+-- Safety: anon sessions (public) can only:
+--   * read the menu (categories, products), active tables, settings
+--   * create a customer_qr order (awaiting_payment) and its items
+--   * read an order by id (status page)
+-- Authenticated staff have role-gated access to the rest via the `is_admin()`
+-- and `is_staff()` helper functions below.
 
--- Categories table
+-- ----------------------------------------------------------------------------
+-- Helpers
+-- ----------------------------------------------------------------------------
+
+CREATE OR REPLACE FUNCTION public.is_staff()
+RETURNS BOOLEAN
+LANGUAGE sql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+  SELECT EXISTS (
+    SELECT 1 FROM public.staff
+    WHERE user_id = auth.uid() AND active = true
+  );
+$$;
+
+CREATE OR REPLACE FUNCTION public.is_admin()
+RETURNS BOOLEAN
+LANGUAGE sql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+  SELECT EXISTS (
+    SELECT 1 FROM public.staff
+    WHERE user_id = auth.uid() AND active = true AND role = 'admin'
+  );
+$$;
+
+-- ----------------------------------------------------------------------------
+-- Tables
+-- ----------------------------------------------------------------------------
+
 CREATE TABLE IF NOT EXISTS categories (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   name TEXT NOT NULL,
@@ -28,11 +55,10 @@ CREATE TABLE IF NOT EXISTS categories (
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
--- Products table
 CREATE TABLE IF NOT EXISTS products (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   name TEXT NOT NULL,
-  price NUMERIC(10,2) NOT NULL DEFAULT 0 CHECK (price >= 0),
+  price NUMERIC(12,2) NOT NULL DEFAULT 0 CHECK (price >= 0),
   category_id UUID REFERENCES categories(id) ON DELETE SET NULL,
   image_url TEXT,
   sku TEXT,
@@ -40,21 +66,16 @@ CREATE TABLE IF NOT EXISTS products (
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
--- Staff table. pin_hash / pin_salt columns are PBKDF2-SHA256 hex strings.
 CREATE TABLE IF NOT EXISTS staff (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID UNIQUE REFERENCES auth.users(id) ON DELETE CASCADE,
+  email TEXT NOT NULL UNIQUE,
   name TEXT NOT NULL,
   role TEXT NOT NULL CHECK (role IN ('admin', 'cashier')),
-  pin_hash TEXT NOT NULL,
-  pin_salt TEXT,
-  pin_algo TEXT NOT NULL DEFAULT 'pbkdf2-sha256'
-    CHECK (pin_algo IN ('pbkdf2-sha256', 'sha256-legacy')),
-  must_change_pin BOOLEAN NOT NULL DEFAULT false,
   active BOOLEAN NOT NULL DEFAULT true,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
--- Tables (physical dining tables, identified by short label for QR URLs)
 CREATE TABLE IF NOT EXISTS tables (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   label TEXT UNIQUE NOT NULL,
@@ -62,19 +83,18 @@ CREATE TABLE IF NOT EXISTS tables (
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
--- Shifts table
 CREATE TABLE IF NOT EXISTS shifts (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   cashier_id UUID REFERENCES staff(id) ON DELETE SET NULL,
+  cashier_user_id UUID REFERENCES auth.users(id) ON DELETE SET NULL,
   cashier_name TEXT NOT NULL,
   start_time TIMESTAMPTZ NOT NULL DEFAULT now(),
   end_time TIMESTAMPTZ,
-  total_sales NUMERIC(10,2) NOT NULL DEFAULT 0,
+  total_sales NUMERIC(12,2) NOT NULL DEFAULT 0,
   order_count INTEGER NOT NULL DEFAULT 0,
   status TEXT NOT NULL CHECK (status IN ('active', 'closed')) DEFAULT 'active'
 );
 
--- Orders table
 CREATE TABLE IF NOT EXISTS orders (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   order_number SERIAL,
@@ -82,12 +102,13 @@ CREATE TABLE IF NOT EXISTS orders (
   status TEXT NOT NULL
     CHECK (status IN ('awaiting_payment', 'pending', 'preparing', 'ready', 'completed', 'cancelled'))
     DEFAULT 'pending',
-  subtotal NUMERIC(10,2) NOT NULL DEFAULT 0 CHECK (subtotal >= 0),
-  tax NUMERIC(10,2) NOT NULL DEFAULT 0 CHECK (tax >= 0),
-  discount NUMERIC(10,2) NOT NULL DEFAULT 0 CHECK (discount >= 0),
-  total NUMERIC(10,2) NOT NULL DEFAULT 0 CHECK (total >= 0),
+  subtotal NUMERIC(12,2) NOT NULL DEFAULT 0 CHECK (subtotal >= 0),
+  tax NUMERIC(12,2) NOT NULL DEFAULT 0 CHECK (tax >= 0),
+  discount NUMERIC(12,2) NOT NULL DEFAULT 0 CHECK (discount >= 0),
+  total NUMERIC(12,2) NOT NULL DEFAULT 0 CHECK (total >= 0),
   payment_method TEXT CHECK (payment_method IN ('cash', 'card', 'ewallet')),
   cashier_id UUID REFERENCES staff(id) ON DELETE SET NULL,
+  cashier_user_id UUID REFERENCES auth.users(id) ON DELETE SET NULL,
   cashier_name TEXT,
   shift_id UUID REFERENCES shifts(id) ON DELETE SET NULL,
   table_number TEXT,
@@ -101,40 +122,32 @@ CREATE TABLE IF NOT EXISTS orders (
   completed_at TIMESTAMPTZ
 );
 
--- Order Items table
 CREATE TABLE IF NOT EXISTS order_items (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   order_id UUID NOT NULL REFERENCES orders(id) ON DELETE CASCADE,
   product_id UUID REFERENCES products(id) ON DELETE SET NULL,
   product_name TEXT NOT NULL,
-  price NUMERIC(10,2) NOT NULL DEFAULT 0 CHECK (price >= 0),
+  price NUMERIC(12,2) NOT NULL DEFAULT 0 CHECK (price >= 0),
   quantity INTEGER NOT NULL DEFAULT 1 CHECK (quantity > 0 AND quantity <= 999),
   notes TEXT
 );
 
--- Settings table
 CREATE TABLE IF NOT EXISTS settings (
   id TEXT PRIMARY KEY DEFAULT 'default',
   business_name TEXT NOT NULL DEFAULT 'Xevora POS',
   address TEXT NOT NULL DEFAULT '',
-  tax_rate NUMERIC(5,2) NOT NULL DEFAULT 6.00,
-  receipt_footer TEXT NOT NULL DEFAULT 'Thank you for your purchase!',
-  currency TEXT NOT NULL DEFAULT 'MYR',
+  tax_rate NUMERIC(5,2) NOT NULL DEFAULT 11.00,
+  receipt_footer TEXT NOT NULL DEFAULT 'Terima kasih atas kunjungan Anda!',
+  currency TEXT NOT NULL DEFAULT 'IDR',
   default_wait_minutes INTEGER NOT NULL DEFAULT 15
 );
 
--- Insert default settings
-INSERT INTO settings (id) VALUES ('default') ON CONFLICT DO NOTHING;
+INSERT INTO settings (id) VALUES ('default') ON CONFLICT (id) DO NOTHING;
 
--- Insert default categories
-INSERT INTO categories (name, sort_order, color) VALUES
-  ('Main Course', 1, '#ef4444'),
-  ('Beverages', 2, '#3b82f6'),
-  ('Desserts', 3, '#f59e0b'),
-  ('Appetizers', 4, '#10b981')
-ON CONFLICT DO NOTHING;
+-- ----------------------------------------------------------------------------
+-- Row Level Security
+-- ----------------------------------------------------------------------------
 
--- Enable Row Level Security (RLS) on every table.
 ALTER TABLE categories   ENABLE ROW LEVEL SECURITY;
 ALTER TABLE products     ENABLE ROW LEVEL SECURITY;
 ALTER TABLE staff        ENABLE ROW LEVEL SECURITY;
@@ -144,68 +157,80 @@ ALTER TABLE orders       ENABLE ROW LEVEL SECURITY;
 ALTER TABLE order_items  ENABLE ROW LEVEL SECURITY;
 ALTER TABLE settings     ENABLE ROW LEVEL SECURITY;
 
--- Drop any legacy wide-open policies so re-running this file is idempotent.
-DROP POLICY IF EXISTS "Allow all on categories"  ON categories;
-DROP POLICY IF EXISTS "Allow all on products"    ON products;
-DROP POLICY IF EXISTS "Allow all on staff"       ON staff;
-DROP POLICY IF EXISTS "Allow all on tables"      ON tables;
-DROP POLICY IF EXISTS "Allow all on shifts"      ON shifts;
-DROP POLICY IF EXISTS "Allow all on orders"      ON orders;
-DROP POLICY IF EXISTS "Allow all on order_items" ON order_items;
-DROP POLICY IF EXISTS "Allow all on settings"    ON settings;
+-- Public (anon) read-only access to the menu + settings + active tables.
+DROP POLICY IF EXISTS "public read categories" ON categories;
+CREATE POLICY "public read categories" ON categories FOR SELECT USING (true);
+DROP POLICY IF EXISTS "public read products" ON products;
+CREATE POLICY "public read products" ON products FOR SELECT USING (available = true OR public.is_staff());
+DROP POLICY IF EXISTS "public read active tables" ON tables;
+CREATE POLICY "public read active tables" ON tables FOR SELECT USING (active = true OR public.is_staff());
+DROP POLICY IF EXISTS "public read settings" ON settings;
+CREATE POLICY "public read settings" ON settings FOR SELECT USING (true);
 
--- Public (anon) read-only access to menu-facing tables so the QR ordering
--- page works without any authentication.
-CREATE POLICY menu_read_public ON categories FOR SELECT TO anon USING (true);
-CREATE POLICY menu_read_public ON products   FOR SELECT TO anon USING (available = true);
-CREATE POLICY tables_read_public ON tables    FOR SELECT TO anon USING (active = true);
-CREATE POLICY settings_read_public ON settings FOR SELECT TO anon USING (true);
+-- Staff (authenticated + row in staff with active=true) can write menu,
+-- tables, settings.
+DROP POLICY IF EXISTS "staff write categories" ON categories;
+CREATE POLICY "staff write categories" ON categories FOR ALL USING (public.is_staff()) WITH CHECK (public.is_staff());
+DROP POLICY IF EXISTS "staff write products" ON products;
+CREATE POLICY "staff write products" ON products FOR ALL USING (public.is_staff()) WITH CHECK (public.is_staff());
+DROP POLICY IF EXISTS "staff write tables" ON tables;
+CREATE POLICY "staff write tables" ON tables FOR ALL USING (public.is_staff()) WITH CHECK (public.is_staff());
+DROP POLICY IF EXISTS "admin update settings" ON settings;
+CREATE POLICY "admin update settings" ON settings FOR UPDATE USING (public.is_admin()) WITH CHECK (public.is_admin());
 
--- Public insert for customer QR orders. Customers may only create orders with
--- source='customer_qr' and status='awaiting_payment' (no injecting paid
--- orders that bypass cashier approval).
-CREATE POLICY orders_insert_public
-  ON orders FOR INSERT TO anon
+-- Staff table: only admins can read the list; every staff can read their
+-- own row. No anon access at all. Writes happen exclusively via the
+-- `invite-staff` Edge Function using the service role.
+DROP POLICY IF EXISTS "admin read staff" ON staff;
+CREATE POLICY "admin read staff" ON staff FOR SELECT
+  USING (public.is_admin() OR user_id = auth.uid());
+
+-- Shifts: staff see their own shifts; admins see all.
+DROP POLICY IF EXISTS "staff read own shifts" ON shifts;
+CREATE POLICY "staff read own shifts" ON shifts FOR SELECT
+  USING (public.is_admin() OR cashier_user_id = auth.uid());
+DROP POLICY IF EXISTS "staff write own shifts" ON shifts;
+CREATE POLICY "staff write own shifts" ON shifts FOR ALL
+  USING (public.is_admin() OR cashier_user_id = auth.uid())
+  WITH CHECK (public.is_admin() OR cashier_user_id = auth.uid());
+
+-- Orders: anon can insert a customer_qr order and read it by id. Staff can
+-- do anything. Admin sees everything.
+DROP POLICY IF EXISTS "anon insert customer orders" ON orders;
+CREATE POLICY "anon insert customer orders" ON orders FOR INSERT
   WITH CHECK (
-    source = 'customer_qr'
-    AND status = 'awaiting_payment'
-    AND cashier_id IS NULL
-    AND payment_method IS NULL
-    AND approved_at IS NULL
+    source = 'customer_qr' AND status = 'awaiting_payment'
   );
+DROP POLICY IF EXISTS "anon read any order" ON orders;
+-- Orders are looked up by UUID (unguessable) so this is safe.
+CREATE POLICY "anon read any order" ON orders FOR SELECT USING (true);
+DROP POLICY IF EXISTS "staff write orders" ON orders;
+CREATE POLICY "staff write orders" ON orders FOR UPDATE
+  USING (public.is_staff()) WITH CHECK (public.is_staff());
+DROP POLICY IF EXISTS "staff insert cashier orders" ON orders;
+CREATE POLICY "staff insert cashier orders" ON orders FOR INSERT
+  WITH CHECK (public.is_staff());
 
-CREATE POLICY order_items_insert_public
-  ON order_items FOR INSERT TO anon
+DROP POLICY IF EXISTS "anon insert order items" ON order_items;
+CREATE POLICY "anon insert order items" ON order_items FOR INSERT
   WITH CHECK (
-    EXISTS (
-      SELECT 1 FROM orders o
-      WHERE o.id = order_items.order_id
-        AND o.source = 'customer_qr'
-        AND o.status = 'awaiting_payment'
-    )
+    EXISTS (SELECT 1 FROM orders o WHERE o.id = order_id AND o.source = 'customer_qr' AND o.status = 'awaiting_payment')
   );
+DROP POLICY IF EXISTS "anon read order items" ON order_items;
+CREATE POLICY "anon read order items" ON order_items FOR SELECT USING (true);
+DROP POLICY IF EXISTS "staff write order items" ON order_items;
+CREATE POLICY "staff write order items" ON order_items FOR ALL
+  USING (public.is_staff()) WITH CHECK (public.is_staff());
 
--- Public read of a specific order (for the customer status page). Customers
--- look up an order by its UUID; UUIDs are effectively unguessable so this
--- is acceptable. No public UPDATE/DELETE.
-CREATE POLICY orders_select_public ON orders FOR SELECT TO anon USING (true);
-CREATE POLICY order_items_select_public ON order_items FOR SELECT TO anon USING (true);
+-- ----------------------------------------------------------------------------
+-- Seed data (optional — run only on a fresh DB)
+-- ----------------------------------------------------------------------------
 
--- Authenticated staff sessions get full read/write. When you migrate staff
--- to Supabase Auth you can narrow these further (e.g. only admins can edit
--- staff rows).
-CREATE POLICY categories_all_staff   ON categories   FOR ALL TO authenticated USING (true) WITH CHECK (true);
-CREATE POLICY products_all_staff     ON products     FOR ALL TO authenticated USING (true) WITH CHECK (true);
-CREATE POLICY tables_all_staff       ON tables       FOR ALL TO authenticated USING (true) WITH CHECK (true);
-CREATE POLICY shifts_all_staff       ON shifts       FOR ALL TO authenticated USING (true) WITH CHECK (true);
-CREATE POLICY orders_all_staff       ON orders       FOR ALL TO authenticated USING (true) WITH CHECK (true);
-CREATE POLICY order_items_all_staff  ON order_items  FOR ALL TO authenticated USING (true) WITH CHECK (true);
-CREATE POLICY settings_all_staff     ON settings     FOR ALL TO authenticated USING (true) WITH CHECK (true);
+INSERT INTO categories (name, sort_order, color) VALUES
+  ('Makanan', 1, '#ef4444'),
+  ('Minuman', 2, '#3b82f6'),
+  ('Pencuci Mulut', 3, '#a855f7')
+ON CONFLICT DO NOTHING;
 
--- `staff` is never readable by anon — it holds PIN hashes. Authenticated
--- access only.
-CREATE POLICY staff_all_staff ON staff FOR ALL TO authenticated USING (true) WITH CHECK (true);
-
--- Enable Realtime for the tables the Kitchen + customer status page subscribe to.
-ALTER PUBLICATION supabase_realtime ADD TABLE orders;
-ALTER PUBLICATION supabase_realtime ADD TABLE order_items;
+INSERT INTO tables (label) VALUES ('1'), ('2'), ('3'), ('4'), ('5')
+ON CONFLICT DO NOTHING;

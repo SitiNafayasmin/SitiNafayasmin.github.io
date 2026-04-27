@@ -4,6 +4,7 @@ import { useAuthStore } from '../../stores/authStore'
 import { useShiftStore } from '../../stores/shiftStore'
 import { useOrderStore } from '../../stores/orderStore'
 import { useSettingsStore } from '../../stores/settingsStore'
+import { t } from '../../lib/i18n'
 
 export function CashierLayout() {
   const currentUser = useAuthStore((s) => s.currentUser)
@@ -20,20 +21,20 @@ export function CashierLayout() {
         <div className="flex items-center gap-6">
           <h1 className="text-base font-bold text-slate-900">{businessName}</h1>
           <nav className="flex items-center gap-1">
-            <CashierNav to="/cashier" end icon={<ShoppingBag size={16} />} label="POS" />
+            <CashierNav to="/cashier" end icon={<ShoppingBag size={16} />} label={t.cashier.nav.pos} />
             <CashierNav
               to="/cashier/payments"
               icon={<Receipt size={16} />}
-              label="Pending Payments"
+              label={t.cashier.nav.pending}
               badge={pendingPaymentCount}
             />
-            <CashierNav to="/cashier/shift" icon={<Clock size={16} />} label="Shift" />
+            <CashierNav to="/cashier/shift" icon={<Clock size={16} />} label={t.cashier.nav.shift} />
           </nav>
         </div>
         <div className="flex items-center gap-4">
           {activeShift && (
             <span className="rounded-full bg-emerald-100 px-3 py-1 text-xs font-medium text-emerald-700 ring-1 ring-inset ring-emerald-200">
-              Shift Active
+              {t.cashier.shift.active}
             </span>
           )}
           <div className="flex items-center gap-2 text-sm text-slate-600">
@@ -45,7 +46,7 @@ export function CashierLayout() {
             className="flex items-center gap-2 text-sm text-rose-600 transition hover:text-rose-700"
           >
             <LogOut size={16} />
-            Logout
+            {t.common.logout}
           </button>
         </div>
       </header>

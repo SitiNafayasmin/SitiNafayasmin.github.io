@@ -1,142 +1,216 @@
-import { useState } from 'react'
-import { Plus, Trash2, UserCheck, UserX } from 'lucide-react'
+import { useEffect, useState } from 'react'
+import { Plus, Trash2, UserCheck, UserX, Mail } from 'lucide-react'
 import { useAuthStore } from '../../stores/authStore'
-import { MAX_PIN_LENGTH, MIN_PIN_LENGTH, isValidPinFormat } from '../../lib/security'
+import { isValidEmail } from '../../lib/security'
 import type { StaffRole } from '../../lib/types'
+import { t } from '../../lib/i18n'
+import { Button, Card, PageHeader, Badge, Input, EmptyState } from '../../components/ui/primitives'
+import { formatDateTime } from '../../lib/utils'
 
 export function AdminStaff() {
-  const { staffList, addStaff, updateStaff, deleteStaff } = useAuthStore()
+  const staffList = useAuthStore((s) => s.staffList)
+  const currentUser = useAuthStore((s) => s.currentUser)
+  const inviteStaff = useAuthStore((s) => s.inviteStaff)
+  const updateStaff = useAuthStore((s) => s.updateStaff)
+  const deleteStaff = useAuthStore((s) => s.deleteStaff)
+  const refreshStaffList = useAuthStore((s) => s.refreshStaffList)
+
   const [showForm, setShowForm] = useState(false)
+  const [email, setEmail] = useState('')
   const [name, setName] = useState('')
   const [role, setRole] = useState<StaffRole>('cashier')
-  const [pin, setPin] = useState('')
   const [error, setError] = useState('')
+  const [info, setInfo] = useState('')
+  const [submitting, setSubmitting] = useState(false)
 
-  const handleAdd = async (e: React.FormEvent) => {
+  useEffect(() => {
+    refreshStaffList()
+  }, [refreshStaffList])
+
+  const handleInvite = async (e: React.FormEvent) => {
     e.preventDefault()
     setError('')
+    setInfo('')
     if (!name.trim()) {
-      setError('Name is required.')
+      setError(t.common.required + ': ' + t.common.name)
       return
     }
-    if (!isValidPinFormat(pin)) {
-      setError(`PIN must be ${MIN_PIN_LENGTH}–${MAX_PIN_LENGTH} digits.`)
+    if (!isValidEmail(email)) {
+      setError('Email tidak valid.')
       return
     }
-    const result = await addStaff(name.trim(), role, pin)
-    if (!result) {
-      setError('Could not create staff member.')
+    setSubmitting(true)
+    const result = await inviteStaff(email, name, role)
+    setSubmitting(false)
+    if (!result.ok) {
+      setError(result.message || t.admin.staff.inviteFailed)
       return
     }
+    setInfo(`${t.admin.staff.inviteSent} ${email}`)
+    setEmail('')
     setName('')
-    setPin('')
     setShowForm(false)
   }
 
+  const handleDelete = async (id: string) => {
+    if (!confirm(t.admin.staff.deleteConfirm)) return
+    await deleteStaff(id)
+  }
+
   return (
-    <div>
-      <div className="flex items-center justify-between mb-6">
-        <h2 className="text-2xl font-bold text-gray-800">Staff Management</h2>
-        <button
-          onClick={() => setShowForm(true)}
-          className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-700"
-        >
-          <Plus size={16} /> Add Staff
-        </button>
-      </div>
+    <div className="space-y-6">
+      <PageHeader
+        title={t.admin.staff.title}
+        description={t.admin.staff.subtitle}
+        actions={
+          <Button onClick={() => setShowForm((v) => !v)}>
+            <Plus size={16} />
+            {t.admin.staff.invite}
+          </Button>
+        }
+      />
 
       {showForm && (
-        <form onSubmit={handleAdd} className="bg-white rounded-xl shadow-sm p-6 mb-6">
-          <h3 className="text-lg font-semibold mb-4">New Staff Member</h3>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Name</label>
-              <input
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                required
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
+        <Card>
+          <h3 className="mb-1 text-lg font-semibold text-slate-900">
+            {t.admin.staff.inviteTitle}
+          </h3>
+          <p className="mb-4 text-sm text-slate-500">{t.admin.staff.inviteDesc}</p>
+          <form onSubmit={handleInvite} className="space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div>
+                <label className="mb-1 block text-sm font-medium text-slate-700">
+                  {t.admin.staff.nameLabel}
+                </label>
+                <Input
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  required
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-sm font-medium text-slate-700">
+                  {t.admin.staff.emailLabel}
+                </label>
+                <Input
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  required
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-sm font-medium text-slate-700">
+                  {t.admin.staff.roleLabel}
+                </label>
+                <select
+                  value={role}
+                  onChange={(e) => setRole(e.target.value as StaffRole)}
+                  className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                >
+                  <option value="cashier">{t.admin.staff.roleCashier}</option>
+                  <option value="admin">{t.admin.staff.roleAdmin}</option>
+                </select>
+              </div>
             </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Role</label>
-              <select
-                value={role}
-                onChange={(e) => setRole(e.target.value as StaffRole)}
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            {error && <p className="text-sm text-rose-600">{error}</p>}
+            {info && <p className="text-sm text-emerald-700">{info}</p>}
+            <div className="flex gap-2">
+              <Button type="submit" loading={submitting}>
+                <Mail size={16} />
+                {t.admin.staff.invite}
+              </Button>
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={() => setShowForm(false)}
               >
-                <option value="cashier">Cashier</option>
-                <option value="admin">Admin</option>
-              </select>
+                {t.common.cancel}
+              </Button>
             </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                PIN ({MIN_PIN_LENGTH}–{MAX_PIN_LENGTH} digits)
-              </label>
-              <input
-                type="password"
-                value={pin}
-                onChange={(e) => setPin(e.target.value.replace(/\D/g, '').slice(0, MAX_PIN_LENGTH))}
-                maxLength={MAX_PIN_LENGTH}
-                required
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
-            </div>
-          </div>
-          {error && <p className="mt-3 text-sm text-rose-600">{error}</p>}
-          <div className="flex gap-2 mt-4">
-            <button type="submit" className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-700">
-              Create
-            </button>
-            <button type="button" onClick={() => setShowForm(false)} className="bg-gray-200 text-gray-700 px-4 py-2 rounded-lg text-sm font-medium hover:bg-gray-300">
-              Cancel
-            </button>
-          </div>
-        </form>
+          </form>
+        </Card>
       )}
 
-      <div className="bg-white rounded-xl shadow-sm overflow-hidden">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="bg-gray-50 text-left text-gray-500">
-              <th className="px-6 py-3 font-medium">Name</th>
-              <th className="px-6 py-3 font-medium">Role</th>
-              <th className="px-6 py-3 font-medium">Status</th>
-              <th className="px-6 py-3 font-medium">Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {staffList.map((staff) => (
-              <tr key={staff.id} className="border-b last:border-0 hover:bg-gray-50">
-                <td className="px-6 py-4 font-medium text-gray-800">{staff.name}</td>
-                <td className="px-6 py-4 capitalize">{staff.role}</td>
-                <td className="px-6 py-4">
-                  <span className={`text-xs font-medium px-2.5 py-1 rounded-full ${staff.active ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
-                    {staff.active ? 'Active' : 'Inactive'}
-                  </span>
-                </td>
-                <td className="px-6 py-4">
-                  <div className="flex gap-2">
-                    <button
-                      onClick={() => updateStaff(staff.id, { active: !staff.active })}
-                      className={`p-1.5 rounded ${staff.active ? 'hover:bg-red-50 text-red-600' : 'hover:bg-green-50 text-green-600'}`}
-                      title={staff.active ? 'Deactivate' : 'Activate'}
-                    >
-                      {staff.active ? <UserX size={16} /> : <UserCheck size={16} />}
-                    </button>
-                    <button
-                      onClick={() => deleteStaff(staff.id)}
-                      className="p-1.5 hover:bg-red-50 rounded text-red-600"
-                    >
-                      <Trash2 size={16} />
-                    </button>
-                  </div>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+      {staffList.length === 0 ? (
+        <EmptyState
+          title={t.admin.staff.emptyTitle}
+          description={t.admin.staff.emptyDesc}
+        />
+      ) : (
+        <Card padding="none">
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="bg-slate-50 text-left text-slate-500">
+                  <th className="px-6 py-3 font-medium">{t.admin.staff.nameLabel}</th>
+                  <th className="px-6 py-3 font-medium">{t.admin.staff.emailLabel}</th>
+                  <th className="px-6 py-3 font-medium">{t.admin.staff.roleLabel}</th>
+                  <th className="px-6 py-3 font-medium">{t.common.status}</th>
+                  <th className="px-6 py-3 font-medium text-right">{t.common.name}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {staffList.map((staff) => {
+                  const isSelf = currentUser?.id === staff.id
+                  return (
+                    <tr key={staff.id} className="border-t last:border-0 hover:bg-slate-50">
+                      <td className="px-6 py-4 font-medium text-slate-800">
+                        {staff.name}{' '}
+                        {isSelf && (
+                          <span className="ml-1 text-xs text-slate-400">
+                            ({t.admin.staff.you})
+                          </span>
+                        )}
+                        <div className="text-xs text-slate-400">
+                          {formatDateTime(staff.created_at)}
+                        </div>
+                      </td>
+                      <td className="px-6 py-4 text-slate-600">{staff.email}</td>
+                      <td className="px-6 py-4">
+                        <Badge color={staff.role === 'admin' ? 'indigo' : 'blue'}>
+                          {staff.role === 'admin' ? t.admin.staff.roleAdmin : t.admin.staff.roleCashier}
+                        </Badge>
+                      </td>
+                      <td className="px-6 py-4">
+                        {staff.user_id ? (
+                          <Badge color={staff.active ? 'green' : 'red'}>
+                            {staff.active ? t.common.active : t.common.inactive}
+                          </Badge>
+                        ) : (
+                          <Badge color="amber">{t.admin.staff.pendingInvite}</Badge>
+                        )}
+                      </td>
+                      <td className="px-6 py-4 text-right">
+                        <div className="inline-flex gap-2">
+                          <Button
+                            size="sm"
+                            variant="secondary"
+                            onClick={() => updateStaff(staff.id, { active: !staff.active })}
+                            disabled={isSelf}
+                            title={staff.active ? t.admin.staff.deactivate : t.admin.staff.activate}
+                          >
+                            {staff.active ? <UserX size={14} /> : <UserCheck size={14} />}
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="danger"
+                            onClick={() => handleDelete(staff.id)}
+                            disabled={isSelf}
+                            title={t.admin.staff.delete}
+                          >
+                            <Trash2 size={14} />
+                          </Button>
+                        </div>
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+        </Card>
+      )}
     </div>
   )
 }
