@@ -14,42 +14,29 @@
 --   * read an order by id (status page)
 -- Authenticated staff have role-gated access to the rest via the `is_admin()`
 -- and `is_staff()` helper functions below.
+--
+-- The file is intentionally ordered:
+--   1. Extensions
+--   2. Tables (so helper functions can reference `staff`)
+--   3. Helper functions (is_staff / is_admin)
+--   4. Row-level security
+--   5. Seed data
+-- The previous ordering had helpers before tables, which failed with
+-- 42P01 "relation public.staff does not exist" at CREATE FUNCTION time.
 
 -- ----------------------------------------------------------------------------
--- Helpers
+-- 1. Extensions
 -- ----------------------------------------------------------------------------
 
-CREATE OR REPLACE FUNCTION public.is_staff()
-RETURNS BOOLEAN
-LANGUAGE sql
-SECURITY DEFINER
-SET search_path = public
-AS $$
-  SELECT EXISTS (
-    SELECT 1 FROM public.staff
-    WHERE user_id = auth.uid() AND active = true
-  );
-$$;
-
-CREATE OR REPLACE FUNCTION public.is_admin()
-RETURNS BOOLEAN
-LANGUAGE sql
-SECURITY DEFINER
-SET search_path = public
-AS $$
-  SELECT EXISTS (
-    SELECT 1 FROM public.staff
-    WHERE user_id = auth.uid() AND active = true AND role = 'admin'
-  );
-$$;
+CREATE EXTENSION IF NOT EXISTS pgcrypto;  -- gen_random_uuid()
 
 -- ----------------------------------------------------------------------------
--- Tables
+-- 2. Tables
 -- ----------------------------------------------------------------------------
 
 CREATE TABLE IF NOT EXISTS categories (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  name TEXT NOT NULL,
+  name TEXT NOT NULL UNIQUE,
   sort_order INTEGER NOT NULL DEFAULT 0,
   color TEXT NOT NULL DEFAULT '#3b82f6',
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
@@ -145,7 +132,35 @@ CREATE TABLE IF NOT EXISTS settings (
 INSERT INTO settings (id) VALUES ('default') ON CONFLICT (id) DO NOTHING;
 
 -- ----------------------------------------------------------------------------
--- Row Level Security
+-- 3. Helper functions (reference staff table — must be defined AFTER tables)
+-- ----------------------------------------------------------------------------
+
+CREATE OR REPLACE FUNCTION public.is_staff()
+RETURNS BOOLEAN
+LANGUAGE sql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+  SELECT EXISTS (
+    SELECT 1 FROM public.staff
+    WHERE user_id = auth.uid() AND active = true
+  );
+$$;
+
+CREATE OR REPLACE FUNCTION public.is_admin()
+RETURNS BOOLEAN
+LANGUAGE sql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+  SELECT EXISTS (
+    SELECT 1 FROM public.staff
+    WHERE user_id = auth.uid() AND active = true AND role = 'admin'
+  );
+$$;
+
+-- ----------------------------------------------------------------------------
+-- 4. Row-Level Security
 -- ----------------------------------------------------------------------------
 
 ALTER TABLE categories   ENABLE ROW LEVEL SECURITY;
@@ -223,14 +238,14 @@ CREATE POLICY "staff write order items" ON order_items FOR ALL
   USING (public.is_staff()) WITH CHECK (public.is_staff());
 
 -- ----------------------------------------------------------------------------
--- Seed data (optional — run only on a fresh DB)
+-- 5. Seed data (safe to re-run)
 -- ----------------------------------------------------------------------------
 
 INSERT INTO categories (name, sort_order, color) VALUES
   ('Makanan', 1, '#ef4444'),
   ('Minuman', 2, '#3b82f6'),
   ('Pencuci Mulut', 3, '#a855f7')
-ON CONFLICT DO NOTHING;
+ON CONFLICT (name) DO NOTHING;
 
 INSERT INTO tables (label) VALUES ('1'), ('2'), ('3'), ('4'), ('5')
-ON CONFLICT DO NOTHING;
+ON CONFLICT (label) DO NOTHING;
