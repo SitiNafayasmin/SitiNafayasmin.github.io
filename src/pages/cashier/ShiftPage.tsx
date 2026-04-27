@@ -3,6 +3,7 @@ import { Clock, LogIn, LogOut } from 'lucide-react'
 import { useAuthStore } from '../../stores/authStore'
 import { useShiftStore } from '../../stores/shiftStore'
 import { formatCurrency, formatDateTime } from '../../lib/utils'
+import { t } from '../../lib/i18n'
 
 export function ShiftPage() {
   const navigate = useNavigate()
@@ -35,16 +36,16 @@ export function ShiftPage() {
             <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-6">
               <Clock size={36} className="text-green-600" />
             </div>
-            <h2 className="text-2xl font-bold text-gray-800 mb-2">Start Your Shift</h2>
+            <h2 className="text-2xl font-bold text-gray-800 mb-2">{t.cashier.shift.startTitle}</h2>
             <p className="text-gray-500 mb-8">
-              Clock in to begin processing orders, {currentUser?.name}.
+              {t.cashier.shift.startHint}, {currentUser?.name}.
             </p>
             <button
               onClick={handleClockIn}
               className="flex items-center justify-center gap-3 w-full bg-green-600 text-white py-4 rounded-xl text-lg font-semibold hover:bg-green-700 transition-colors"
             >
               <LogIn size={24} />
-              Clock In
+              {t.cashier.shift.clockIn}
             </button>
           </div>
         ) : (
@@ -52,17 +53,17 @@ export function ShiftPage() {
             <div className="w-20 h-20 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-6">
               <Clock size={36} className="text-blue-600" />
             </div>
-            <h2 className="text-2xl font-bold text-gray-800 mb-2">Shift Active</h2>
+            <h2 className="text-2xl font-bold text-gray-800 mb-2">{t.cashier.shift.active}</h2>
             <p className="text-gray-500 mb-6">
-              Started: {formatDateTime(activeShift.start_time)}
+              {t.cashier.shift.startedAt}: {formatDateTime(activeShift.start_time)}
             </p>
             <div className="grid grid-cols-2 gap-4 mb-8">
               <div className="bg-gray-50 rounded-xl p-4">
-                <p className="text-sm text-gray-500">Orders</p>
+                <p className="text-sm text-gray-500">{t.cashier.shift.orders}</p>
                 <p className="text-2xl font-bold">{activeShift.order_count}</p>
               </div>
               <div className="bg-gray-50 rounded-xl p-4">
-                <p className="text-sm text-gray-500">Sales</p>
+                <p className="text-sm text-gray-500">{t.cashier.shift.sales}</p>
                 <p className="text-2xl font-bold">{formatCurrency(activeShift.total_sales)}</p>
               </div>
             </div>
@@ -71,14 +72,14 @@ export function ShiftPage() {
                 onClick={() => navigate('/cashier')}
                 className="flex-1 bg-blue-600 text-white py-3 rounded-xl font-semibold hover:bg-blue-700 transition-colors"
               >
-                Go to POS
+                {t.cashier.shift.goToPos}
               </button>
               <button
                 onClick={handleClockOut}
                 className="flex items-center justify-center gap-2 bg-red-600 text-white px-6 py-3 rounded-xl font-semibold hover:bg-red-700 transition-colors"
               >
                 <LogOut size={20} />
-                Clock Out
+                {t.cashier.shift.clockOut}
               </button>
             </div>
           </div>
@@ -86,7 +87,7 @@ export function ShiftPage() {
 
         {recentShifts.length > 0 && (
           <div className="mt-6 bg-white rounded-2xl shadow-lg p-6">
-            <h3 className="text-lg font-semibold text-gray-800 mb-4">Recent Shifts</h3>
+            <h3 className="text-lg font-semibold text-gray-800 mb-4">{t.cashier.shift.recent}</h3>
             <div className="space-y-3">
               {recentShifts.map((shift) => (
                 <div key={shift.id} className="flex items-center justify-between py-2 border-b last:border-0">
@@ -94,7 +95,7 @@ export function ShiftPage() {
                     {shift.end_time ? formatDateTime(shift.end_time) : '-'}
                   </div>
                   <div className="text-sm">
-                    {shift.order_count} orders &middot; {formatCurrency(shift.total_sales)}
+                    {shift.order_count} {t.common.items.toLowerCase()} &middot; {formatCurrency(shift.total_sales)}
                   </div>
                 </div>
               ))}

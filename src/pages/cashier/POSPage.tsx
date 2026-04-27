@@ -18,6 +18,7 @@ import { useSettingsStore } from '../../stores/settingsStore'
 import type { OrderType, PaymentMethod, Product } from '../../lib/types'
 import { formatCurrency } from '../../lib/utils'
 import { sanitizeDiscount } from '../../lib/security'
+import { t } from '../../lib/i18n'
 
 export function POSPage() {
   const { products, categories } = useProductStore()
@@ -97,9 +98,9 @@ export function POSPage() {
     return (
       <div className="flex items-center justify-center h-full">
         <div className="text-center">
-          <p className="text-gray-500 text-lg mb-4">You need to clock in to start a shift.</p>
+          <p className="text-gray-500 text-lg mb-4">{t.cashier.shift.needClockIn}</p>
           <Link to="/cashier/shift" className="text-blue-600 hover:text-blue-700 font-medium">
-            Go to Shift Management
+            {t.cashier.shift.goToShift}
           </Link>
         </div>
       </div>

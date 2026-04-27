@@ -5,6 +5,7 @@ import { useShiftStore } from '../../stores/shiftStore'
 import { useAuthStore } from '../../stores/authStore'
 import { formatCurrency } from '../../lib/utils'
 import { t } from '../../lib/i18n'
+import { OrderStatusBadge } from '../../components/ui/primitives'
 
 export function AdminDashboard() {
   const orders = useOrderStore((s) => s.orders)
@@ -125,17 +126,4 @@ function StatCard({ icon, label, value, color }: {
   )
 }
 
-function OrderStatusBadge({ status }: { status: string }) {
-  const colors: Record<string, string> = {
-    pending: 'bg-yellow-100 text-yellow-700',
-    preparing: 'bg-blue-100 text-blue-700',
-    ready: 'bg-green-100 text-green-700',
-    completed: 'bg-gray-100 text-gray-700',
-    cancelled: 'bg-red-100 text-red-700',
-  }
-  return (
-    <span className={`text-xs font-medium px-2.5 py-1 rounded-full ${colors[status] ?? 'bg-gray-100 text-gray-700'}`}>
-      {status}
-    </span>
-  )
-}
+
