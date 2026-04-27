@@ -63,12 +63,24 @@ export function AdminStaff() {
         title={t.admin.staff.title}
         description={t.admin.staff.subtitle}
         actions={
-          <Button onClick={() => setShowForm((v) => !v)}>
+          <Button
+            onClick={() => {
+              setInfo('')
+              setError('')
+              setShowForm((v) => !v)
+            }}
+          >
             <Plus size={16} />
             {t.admin.staff.invite}
           </Button>
         }
       />
+
+      {info && (
+        <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
+          {info}
+        </div>
+      )}
 
       {showForm && (
         <Card>
@@ -114,7 +126,6 @@ export function AdminStaff() {
               </div>
             </div>
             {error && <p className="text-sm text-rose-600">{error}</p>}
-            {info && <p className="text-sm text-emerald-700">{info}</p>}
             <div className="flex gap-2">
               <Button type="submit" loading={submitting}>
                 <Mail size={16} />
