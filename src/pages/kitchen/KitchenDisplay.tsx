@@ -12,6 +12,7 @@ import { useNavigate } from 'react-router-dom'
 import { useOrderStore } from '../../stores/orderStore'
 import type { Order, OrderStatus } from '../../lib/types'
 import { formatTime } from '../../lib/utils'
+import { t } from '../../lib/i18n'
 
 const OVERDUE_MINUTES = 10
 
@@ -89,10 +90,10 @@ export function KitchenDisplay() {
           </button>
           <div className="flex items-center gap-3">
             <ChefHat size={24} className="text-orange-400" />
-            <h1 className="text-xl font-bold">Kitchen Display</h1>
+            <h1 className="text-xl font-bold">{t.kitchen.title}</h1>
           </div>
           <span className="bg-orange-600 text-white text-sm font-medium px-3 py-1 rounded-full">
-            {activeOrders.length} Active
+            {activeOrders.length} {t.common.active}
           </span>
         </div>
         <div className="flex items-center gap-3">
@@ -102,7 +103,7 @@ export function KitchenDisplay() {
               showCompleted ? 'bg-green-600' : 'bg-gray-700 hover:bg-gray-600'
             }`}
           >
-            {showCompleted ? 'Hide' : 'Show'} Completed
+            {showCompleted ? t.common.hide : t.common.show} {t.common.completed}
           </button>
           <button
             onClick={() => setSoundEnabled(!soundEnabled)}
@@ -125,8 +126,8 @@ export function KitchenDisplay() {
           <div className="flex items-center justify-center h-[60vh]">
             <div className="text-center">
               <ChefHat size={64} className="text-gray-600 mx-auto mb-4" />
-              <p className="text-2xl text-gray-500">No active orders</p>
-              <p className="text-gray-600 mt-2">New orders will appear here automatically</p>
+              <p className="text-2xl text-gray-500">{t.kitchen.empty}</p>
+              <p className="text-gray-600 mt-2">{t.kitchen.subtitle}</p>
             </div>
           </div>
         ) : (
@@ -144,7 +145,7 @@ export function KitchenDisplay() {
         {showCompleted && completedOrders.length > 0 && (
           <>
             <h2 className="text-lg font-semibold text-gray-400 mt-8 mb-4">
-              Recently Completed
+              {t.order.status.completed}
             </h2>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 opacity-60">
               {completedOrders.map((order) => (
@@ -212,7 +213,7 @@ function OrderCard({
       </div>
 
       {order.table_number && (
-        <p className="text-sm text-yellow-400 mb-2">Table: {order.table_number}</p>
+        <p className="text-sm text-yellow-400 mb-2">{t.kitchen.table}: {order.table_number}</p>
       )}
 
       {/* Items */}
@@ -239,7 +240,7 @@ function OrderCard({
       </div>
 
       {order.notes && (
-        <p className="text-xs text-yellow-300 italic mb-3">Note: {order.notes}</p>
+        <p className="text-xs text-yellow-300 italic mb-3">{t.kitchen.noteLabel}: {order.notes}</p>
       )}
 
       <p className="text-xs text-gray-500 mb-3">{formatTime(order.created_at)}</p>
@@ -251,7 +252,7 @@ function OrderCard({
             onClick={() => onStatusChange(order.id, 'preparing')}
             className="flex-1 flex items-center justify-center gap-2 bg-yellow-600 hover:bg-yellow-700 text-white py-2.5 rounded-lg text-sm font-semibold transition-colors"
           >
-            <ChefHat size={16} /> Start
+            <ChefHat size={16} /> {t.kitchen.markPreparing}
           </button>
         )}
         {order.status === 'preparing' && (
@@ -259,7 +260,7 @@ function OrderCard({
             onClick={() => onStatusChange(order.id, 'ready')}
             className="flex-1 flex items-center justify-center gap-2 bg-green-600 hover:bg-green-700 text-white py-2.5 rounded-lg text-sm font-semibold transition-colors"
           >
-            <CheckCircle2 size={16} /> Ready
+            <CheckCircle2 size={16} /> {t.kitchen.markReady}
           </button>
         )}
         {order.status === 'ready' && (
@@ -267,7 +268,7 @@ function OrderCard({
             onClick={() => onStatusChange(order.id, 'completed')}
             className="flex-1 flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 text-white py-2.5 rounded-lg text-sm font-semibold transition-colors"
           >
-            <CheckCircle2 size={16} /> Complete
+            <CheckCircle2 size={16} /> {t.kitchen.markCompleted}
           </button>
         )}
       </div>

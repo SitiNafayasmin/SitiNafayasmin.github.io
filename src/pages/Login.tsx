@@ -1,119 +1,188 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
+import { ArrowLeft, Lock, Mail } from 'lucide-react'
 import { useAuthStore } from '../stores/authStore'
-import { ArrowLeft, Lock } from 'lucide-react'
+import { isValidEmail, isValidPassword, MIN_PASSWORD_LENGTH } from '../lib/security'
+import type { StaffRole } from '../lib/types'
+import { t } from '../lib/i18n'
+
+function formatRemaining(ms: number): string {
+  const totalSeconds = Math.ceil(ms / 1000)
+  const minutes = Math.floor(totalSeconds / 60)
+  const seconds = totalSeconds % 60
+  if (minutes === 0) return `${seconds}d`
+  return `${minutes}m ${seconds.toString().padStart(2, '0')}d`
+}
 
 export function Login() {
   const [searchParams] = useSearchParams()
-  const role = searchParams.get('role') ?? 'cashier'
+  const roleParam = searchParams.get('role')
+  const expectedRole: StaffRole | undefined =
+    roleParam === 'admin' ? 'admin' : roleParam === 'cashier' ? 'cashier' : undefined
+
   const navigate = useNavigate()
   const login = useAuthStore((s) => s.login)
-  const [pin, setPin] = useState('')
+  const sendPasswordReset = useAuthStore((s) => s.sendPasswordReset)
+  const authLoading = useAuthStore((s) => s.loading)
+
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
   const [error, setError] = useState('')
-  const [loading, setLoading] = useState(false)
+  const [info, setInfo] = useState('')
+  const [lockoutRemaining, setLockoutRemaining] = useState(0)
+  const [resetSending, setResetSending] = useState(false)
 
-  const handleSubmit = async () => {
-    if (pin.length < 4) {
-      setError('PIN must be at least 4 digits')
-      return
-    }
-    setLoading(true)
+  useEffect(() => {
+    if (lockoutRemaining <= 0) return
+    const interval = setInterval(() => {
+      setLockoutRemaining((prev) => Math.max(0, prev - 1000))
+    }, 1000)
+    return () => clearInterval(interval)
+  }, [lockoutRemaining])
+
+  const locked = lockoutRemaining > 0
+
+  const handleSubmit = async (event: React.FormEvent) => {
+    event.preventDefault()
     setError('')
-    const user = await login(pin)
-    setLoading(false)
-
-    if (!user) {
-      setError('Invalid PIN')
-      setPin('')
+    setInfo('')
+    if (!isValidEmail(email)) {
+      setError('Email tidak valid.')
       return
     }
-
-    if (role === 'admin' && user.role !== 'admin') {
-      setError('Access denied. Admin PIN required.')
-      setPin('')
+    if (!isValidPassword(password)) {
+      setError(`Kata sandi minimal ${MIN_PASSWORD_LENGTH} karakter.`)
       return
     }
-
-    navigate(role === 'admin' ? '/admin' : '/cashier')
-  }
-
-  const handleDigit = (digit: string) => {
-    if (pin.length < 8) {
-      setPin((p) => p + digit)
+    const result = await login(email, password, expectedRole)
+    if (!result.ok) {
+      switch (result.reason) {
+        case 'locked':
+          setLockoutRemaining(result.remainingMs ?? 0)
+          setError(t.login.rateLimited)
+          break
+        case 'supabase_missing':
+          setError(t.login.supabaseMissing)
+          break
+        case 'inactive':
+          setError(t.login.accountInactive)
+          break
+        case 'wrong_role':
+          setError(t.login.wrongRole)
+          break
+        case 'no_staff_row':
+          setError('Akun Anda belum terdaftar sebagai staf.')
+          break
+        default:
+          setError(t.login.invalidCredentials)
+      }
+      return
     }
+    navigate(result.user.role === 'admin' ? '/admin' : '/cashier')
   }
 
-  const handleBackspace = () => {
-    setPin((p) => p.slice(0, -1))
+  const handleReset = async () => {
+    setError('')
+    setInfo('')
+    if (!isValidEmail(email)) {
+      setError('Masukkan email Anda dulu.')
+      return
+    }
+    setResetSending(true)
+    const r = await sendPasswordReset(email)
+    setResetSending(false)
+    if (r.ok) setInfo(t.login.resetSent)
+    else setError(r.message || t.login.resetFailed)
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-900 to-gray-800 flex items-center justify-center p-4">
-      <div className="bg-white rounded-2xl shadow-2xl p-8 w-full max-w-sm">
+    <div className="min-h-screen bg-gradient-to-br from-indigo-950 via-slate-900 to-slate-950 flex items-center justify-center p-4">
+      <form
+        onSubmit={handleSubmit}
+        className="w-full max-w-sm rounded-3xl bg-white/95 p-8 shadow-2xl backdrop-blur"
+      >
         <button
+          type="button"
           onClick={() => navigate('/')}
-          className="flex items-center gap-2 text-gray-500 hover:text-gray-700 text-sm mb-6"
+          className="mb-6 flex items-center gap-2 text-sm text-slate-500 transition hover:text-slate-700"
         >
           <ArrowLeft size={16} />
-          Back
+          {t.common.back}
         </button>
 
-        <div className="text-center mb-8">
-          <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
-            <Lock size={28} className="text-blue-600" />
+        <div className="mb-8 text-center">
+          <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-indigo-100">
+            <Lock size={28} className="text-indigo-600" />
           </div>
-          <h2 className="text-2xl font-bold text-gray-800">
-            {role === 'admin' ? 'Admin' : 'Cashier'} Login
-          </h2>
-          <p className="text-gray-500 text-sm mt-1">Enter your PIN to continue</p>
+          <h2 className="text-2xl font-bold text-slate-900">{t.login.title}</h2>
+          <p className="mt-1 text-sm text-slate-500">{t.login.subtitle}</p>
         </div>
 
-        <div className="flex justify-center gap-3 mb-6">
-          {Array.from({ length: 8 }).map((_, i) => (
-            <div
-              key={i}
-              className={`w-3 h-3 rounded-full ${
-                i < pin.length ? 'bg-blue-600' : 'bg-gray-200'
-              }`}
+        <div className="mb-4">
+          <label className="mb-1 block text-sm font-medium text-slate-700">
+            {t.common.email}
+          </label>
+          <div className="relative">
+            <Mail
+              size={18}
+              className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
             />
-          ))}
+            <input
+              type="email"
+              required
+              disabled={locked}
+              autoComplete="username"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder={t.login.emailPlaceholder}
+              className="w-full rounded-xl border border-slate-200 bg-white py-2.5 pl-10 pr-3 text-sm text-slate-900 focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-400"
+            />
+          </div>
         </div>
 
-        {error && (
-          <p className="text-red-500 text-sm text-center mb-4">{error}</p>
+        <div className="mb-2">
+          <label className="mb-1 block text-sm font-medium text-slate-700">
+            {t.common.password}
+          </label>
+          <input
+            type="password"
+            required
+            disabled={locked}
+            autoComplete="current-password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            placeholder={t.login.passwordPlaceholder}
+            className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-400"
+          />
+        </div>
+
+        <div className="mb-4 flex justify-end">
+          <button
+            type="button"
+            onClick={handleReset}
+            disabled={resetSending}
+            className="text-xs text-indigo-600 hover:text-indigo-800 disabled:opacity-50"
+          >
+            {t.login.forgot}
+          </button>
+        </div>
+
+        {error && <p className="mb-3 text-center text-sm text-rose-600">{error}</p>}
+        {info && <p className="mb-3 text-center text-sm text-emerald-700">{info}</p>}
+        {locked && (
+          <p className="mb-3 text-center text-sm text-amber-700">
+            {t.login.rateLimited} ({formatRemaining(lockoutRemaining)})
+          </p>
         )}
 
-        <div className="grid grid-cols-3 gap-3 mb-4">
-          {['1', '2', '3', '4', '5', '6', '7', '8', '9'].map((digit) => (
-            <button
-              key={digit}
-              onClick={() => handleDigit(digit)}
-              className="h-14 rounded-xl bg-gray-100 hover:bg-gray-200 text-xl font-semibold text-gray-800 transition-colors"
-            >
-              {digit}
-            </button>
-          ))}
-          <button
-            onClick={handleBackspace}
-            className="h-14 rounded-xl bg-gray-100 hover:bg-gray-200 text-sm font-medium text-gray-600 transition-colors"
-          >
-            Delete
-          </button>
-          <button
-            onClick={() => handleDigit('0')}
-            className="h-14 rounded-xl bg-gray-100 hover:bg-gray-200 text-xl font-semibold text-gray-800 transition-colors"
-          >
-            0
-          </button>
-          <button
-            onClick={handleSubmit}
-            disabled={loading || pin.length < 4}
-            className="h-14 rounded-xl bg-blue-600 hover:bg-blue-700 disabled:bg-blue-300 text-white text-sm font-medium transition-colors"
-          >
-            {loading ? '...' : 'Enter'}
-          </button>
-        </div>
-      </div>
+        <button
+          type="submit"
+          disabled={locked || authLoading}
+          className="w-full rounded-xl bg-indigo-600 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-indigo-700 disabled:opacity-60"
+        >
+          {authLoading ? t.common.signingIn : t.login.submit}
+        </button>
+      </form>
     </div>
   )
 }
