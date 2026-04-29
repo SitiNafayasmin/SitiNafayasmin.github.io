@@ -69,10 +69,10 @@ export function CustomerMenu() {
     })
   }
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     if (!safeTable || items.length === 0 || submitting) return
     setSubmitting(true)
-    const order = placeCustomerOrder({
+    const order = await placeCustomerOrder({
       tableNumber: safeTable,
       items: items.map((i) => ({ product: i.product, quantity: i.quantity, notes: i.notes })),
       notes: notes.trim() || null,
@@ -151,16 +151,33 @@ export function CustomerMenu() {
           <ul className="divide-y divide-slate-100">
             {filteredProducts.map((product) => {
               const line = items.find((i) => i.product.id === product.id)
+              const remaining =
+                product.stock === null || product.stock === undefined
+                  ? null
+                  : product.stock - (line?.quantity ?? 0)
+              const soldOut = remaining !== null && remaining <= 0
               return (
                 <li
                   key={product.id}
-                  className="flex items-center gap-4 p-4"
+                  className={`flex items-center gap-4 p-4 ${soldOut && !line ? 'opacity-60' : ''}`}
                 >
+                  {product.image_url && (
+                    <img
+                      src={product.image_url}
+                      alt=""
+                      className="h-14 w-14 flex-shrink-0 rounded-lg object-cover"
+                    />
+                  )}
                   <div className="flex-1 min-w-0">
                     <p className="font-medium text-slate-900 truncate">{product.name}</p>
                     <p className="text-sm text-indigo-600 font-semibold">
                       {formatCurrency(product.price, settings.currency)}
                     </p>
+                    {soldOut && (
+                      <span className="mt-1 inline-flex items-center rounded-full bg-red-100 px-2 py-0.5 text-xs font-medium text-red-700">
+                        {t.admin.products.soldOut}
+                      </span>
+                    )}
                   </div>
                   {line ? (
                     <div className="flex items-center gap-2">
@@ -174,14 +191,15 @@ export function CustomerMenu() {
                       <span className="w-6 text-center font-medium">{line.quantity}</span>
                       <button
                         onClick={() => changeQty(product, 1)}
-                        className="flex h-9 w-9 items-center justify-center rounded-full bg-indigo-600 text-white hover:bg-indigo-700"
+                        disabled={soldOut}
+                        className="flex h-9 w-9 items-center justify-center rounded-full bg-indigo-600 text-white hover:bg-indigo-700 disabled:cursor-not-allowed disabled:bg-slate-300"
                         aria-label="Increase"
                       >
                         <Plus size={16} />
                       </button>
                     </div>
                   ) : (
-                    <Button onClick={() => changeQty(product, 1)} size="sm">
+                    <Button onClick={() => changeQty(product, 1)} size="sm" disabled={soldOut}>
                       <Plus size={14} /> {t.customer.add}
                     </Button>
                   )}

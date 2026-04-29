@@ -9,23 +9,25 @@ import type {
 import { getItem, setItem } from '../lib/localStorage'
 import {
   clampNumber,
-  generateId,
   generatePickupCode,
   sanitizeTableId,
 } from '../lib/utils'
 import { sanitizeDiscount, sanitizePrice, sanitizeQuantity } from '../lib/security'
+import {
+  fetchOrders,
+  insertOrderWithItems,
+  subscribeToTable,
+  updateOrderRow,
+} from '../lib/data'
+import { isSupabaseConfigured } from '../lib/supabase'
 
-const CHANNEL_NAME = 'xevora_pos'
 const DEFAULT_WAIT_MINUTES = 15
-
-// Tracks whether we've already subscribed the module-level listener. This
-// avoids stacking multiple listeners when multiple pages call initialize().
-let channelAttached = false
 
 interface CashierOrderParams {
   orderType: OrderType
   paymentMethod: PaymentMethod
   cashierId: string | null
+  cashierUserId: string | null
   cashierName: string | null
   shiftId: string | null
   tableNumber: string | null
@@ -46,6 +48,7 @@ interface OrderState {
   orders: Order[]
   cart: CartItem[]
   heldOrders: { id: string; cart: CartItem[]; label: string }[]
+  hydrated: boolean
   addToCart: (item: CartItem) => void
   updateCartQuantity: (productId: string, quantity: number) => void
   updateCartNotes: (productId: string, notes: string | null) => void
@@ -54,30 +57,21 @@ interface OrderState {
   holdOrder: (label: string) => void
   recallOrder: (holdId: string) => void
   deleteHeldOrder: (holdId: string) => void
-  placeOrder: (params: CashierOrderParams) => Order | null
-  placeCustomerOrder: (params: CustomerOrderParams) => Order | null
+  placeOrder: (params: CashierOrderParams) => Promise<Order | null>
+  placeCustomerOrder: (params: CustomerOrderParams) => Promise<Order | null>
   approveCustomerOrder: (params: {
     orderId: string
     paymentMethod: PaymentMethod
     cashierId: string | null
+    cashierUserId: string | null
     cashierName: string | null
     shiftId: string | null
     waitMinutes?: number
-  }) => Order | null
-  updateOrderStatus: (id: string, status: OrderStatus) => void
-  cancelOrder: (id: string) => void
-  refreshFromStorage: () => void
-  initialize: () => void
-}
-
-function broadcast(message: { type: string; payload?: unknown }): void {
-  try {
-    const channel = new BroadcastChannel(CHANNEL_NAME)
-    channel.postMessage(message)
-    channel.close()
-  } catch {
-    // BroadcastChannel not supported
-  }
+  }) => Promise<Order | null>
+  updateOrderStatus: (id: string, status: OrderStatus) => Promise<boolean>
+  cancelOrder: (id: string) => Promise<boolean>
+  refresh: () => Promise<void>
+  initialize: () => Promise<void>
 }
 
 function calcTotals(items: CartItem[], taxRate: number, discount: number) {
@@ -91,35 +85,43 @@ function calcTotals(items: CartItem[], taxRate: number, discount: number) {
   return { subtotal: +subtotal.toFixed(2), tax, discount: safeDiscount, total }
 }
 
-function nextOrderNumber(orders: Order[]): number {
-  return orders.length > 0 ? Math.max(...orders.map((o) => o.order_number)) + 1 : 1
-}
+let ordersUnsub: (() => void) | null = null
+let itemsUnsub: (() => void) | null = null
 
 export const useOrderStore = create<OrderState>((set, get) => ({
   orders: [],
   cart: [],
   heldOrders: [],
+  hydrated: false,
 
-  refreshFromStorage: () => {
-    const orders = getItem<Order[]>('orders', [])
+  refresh: async () => {
+    if (!isSupabaseConfigured) return
+    const orders = await fetchOrders()
+    set({ orders })
+    setItem('orders', orders)
+  },
+
+  initialize: async () => {
+    // Cart + held orders stay local (per-device state).
+    const cachedOrders = getItem<Order[]>('orders', [])
     const heldOrders = getItem<{ id: string; cart: CartItem[]; label: string }[]>(
       'held_orders',
       [],
     )
-    set({ orders, heldOrders })
-  },
+    set({ orders: cachedOrders, heldOrders })
 
-  initialize: () => {
-    get().refreshFromStorage()
-    if (channelAttached) return
-    try {
-      const channel = new BroadcastChannel(CHANNEL_NAME)
-      channel.onmessage = () => {
-        get().refreshFromStorage()
-      }
-      channelAttached = true
-    } catch {
-      // BroadcastChannel unsupported
+    if (!isSupabaseConfigured) {
+      set({ hydrated: true })
+      return
+    }
+    await get().refresh()
+    set({ hydrated: true })
+
+    if (!ordersUnsub) {
+      ordersUnsub = subscribeToTable('orders', () => get().refresh())
+    }
+    if (!itemsUnsub) {
+      itemsUnsub = subscribeToTable('order_items', () => get().refresh())
     }
   },
 
@@ -169,7 +171,7 @@ export const useOrderStore = create<OrderState>((set, get) => ({
   holdOrder: (label) => {
     const cart = get().cart
     if (cart.length === 0) return
-    const holdEntry = { id: generateId(), cart: [...cart], label }
+    const holdEntry = { id: crypto.randomUUID(), cart: [...cart], label }
     const updated = [...get().heldOrders, holdEntry]
     set({ heldOrders: updated, cart: [] })
     setItem('held_orders', updated)
@@ -189,120 +191,110 @@ export const useOrderStore = create<OrderState>((set, get) => ({
     setItem('held_orders', remaining)
   },
 
-  placeOrder: (params) => {
+  placeOrder: async (params) => {
     const cart = get().cart
     if (cart.length === 0) return null
+    if (!isSupabaseConfigured) return null
     const { subtotal, tax, discount, total } = calcTotals(cart, params.taxRate, params.discount)
 
-    const orders = get().orders
-    const orderNumber = nextOrderNumber(orders)
-
-    const order: Order = {
-      id: generateId(),
-      order_number: orderNumber,
-      order_type: params.orderType,
-      status: 'pending',
+    const row = await insertOrderWithItems({
+      order: {
+        id: crypto.randomUUID(),
+        order_type: params.orderType,
+        status: 'pending',
+        subtotal,
+        tax,
+        discount,
+        total,
+        payment_method: params.paymentMethod,
+        cashier_id: params.cashierId,
+        cashier_user_id: params.cashierUserId,
+        cashier_name: params.cashierName,
+        shift_id: params.shiftId,
+        table_number:
+          params.orderType === 'dine_in'
+            ? sanitizeTableId(params.tableNumber ?? '') || null
+            : null,
+        notes: params.notes,
+        source: 'cashier',
+        pickup_code: null,
+        approved_at: new Date().toISOString(),
+        estimated_wait_minutes: null,
+        customer_name: null,
+      },
       items: cart.map((c) => ({
-        id: generateId(),
-        order_id: '',
         product_id: c.product.id,
         product_name: c.product.name,
         price: sanitizePrice(c.product.price),
         quantity: sanitizeQuantity(c.quantity),
         notes: c.notes,
       })),
-      subtotal,
-      tax,
-      discount,
-      total,
-      payment_method: params.paymentMethod,
-      cashier_id: params.cashierId,
-      cashier_name: params.cashierName,
-      shift_id: params.shiftId,
-      table_number:
-        params.orderType === 'dine_in' ? sanitizeTableId(params.tableNumber ?? '') || null : null,
-      notes: params.notes,
-      created_at: new Date().toISOString(),
-      completed_at: null,
-      source: 'cashier',
-      pickup_code: null,
-      approved_at: new Date().toISOString(),
-      estimated_wait_minutes: null,
-      customer_name: null,
-    }
-    order.items.forEach((item) => {
-      item.order_id = order.id
     })
-
-    const updated = [...orders, order]
-    set({ orders: updated, cart: [] })
-    setItem('orders', updated)
-    broadcast({ type: 'NEW_ORDER', payload: order.id })
-    return order
+    if (!row) return null
+    set({ cart: [] })
+    await get().refresh()
+    return row
   },
 
-  placeCustomerOrder: (params) => {
+  placeCustomerOrder: async (params) => {
     if (params.items.length === 0) return null
     const safeTable = sanitizeTableId(params.tableNumber)
     if (!safeTable) return null
+    if (!isSupabaseConfigured) return null
 
     const { subtotal, tax, total } = calcTotals(params.items, params.taxRate, 0)
-    const orders = get().orders
-    const orderNumber = nextOrderNumber(orders)
 
-    const order: Order = {
-      id: generateId(),
-      order_number: orderNumber,
-      order_type: 'dine_in',
-      status: 'awaiting_payment',
+    const row = await insertOrderWithItems({
+      order: {
+        id: crypto.randomUUID(),
+        order_type: 'dine_in',
+        status: 'awaiting_payment',
+        subtotal,
+        tax,
+        discount: 0,
+        total,
+        payment_method: null,
+        cashier_id: null,
+        cashier_user_id: null,
+        cashier_name: null,
+        shift_id: null,
+        table_number: safeTable,
+        notes: params.notes,
+        source: 'customer_qr',
+        pickup_code: generatePickupCode(),
+        approved_at: null,
+        estimated_wait_minutes: null,
+        customer_name: params.customerName?.slice(0, 64) ?? null,
+      },
       items: params.items.map((c) => ({
-        id: generateId(),
-        order_id: '',
         product_id: c.product.id,
         product_name: c.product.name,
         price: sanitizePrice(c.product.price),
         quantity: sanitizeQuantity(c.quantity),
         notes: c.notes,
       })),
-      subtotal,
-      tax,
-      discount: 0,
-      total,
-      payment_method: null,
-      cashier_id: null,
-      cashier_name: null,
-      shift_id: null,
-      table_number: safeTable,
-      notes: params.notes,
-      created_at: new Date().toISOString(),
-      completed_at: null,
-      source: 'customer_qr',
-      pickup_code: generatePickupCode(),
-      approved_at: null,
-      estimated_wait_minutes: null,
-      customer_name: params.customerName?.slice(0, 64) ?? null,
-    }
-    order.items.forEach((item) => {
-      item.order_id = order.id
     })
-
-    const updated = [...orders, order]
-    set({ orders: updated })
-    setItem('orders', updated)
-    broadcast({ type: 'NEW_CUSTOMER_ORDER', payload: order.id })
-    return order
+    if (!row) return null
+    await get().refresh()
+    return row
   },
 
-  approveCustomerOrder: ({ orderId, paymentMethod, cashierId, cashierName, shiftId, waitMinutes }) => {
-    const orders = get().orders
-    const target = orders.find((o) => o.id === orderId)
-    if (!target || target.status !== 'awaiting_payment') return null
-
-    const approved: Order = {
-      ...target,
+  approveCustomerOrder: async ({
+    orderId,
+    paymentMethod,
+    cashierId,
+    cashierUserId,
+    cashierName,
+    shiftId,
+    waitMinutes,
+  }) => {
+    const order = get().orders.find((o) => o.id === orderId)
+    if (!order || order.status !== 'awaiting_payment') return null
+    const row = await updateOrderRow(orderId, {
       status: 'pending',
       payment_method: paymentMethod,
       cashier_id: cashierId,
+      cashier_user_id: cashierUserId,
       cashier_name: cashierName,
       shift_id: shiftId,
       approved_at: new Date().toISOString(),
@@ -312,30 +304,22 @@ export const useOrderStore = create<OrderState>((set, get) => ({
         120,
         DEFAULT_WAIT_MINUTES,
       ),
-    }
-    const updated = orders.map((o) => (o.id === orderId ? approved : o))
-    set({ orders: updated })
-    setItem('orders', updated)
-    broadcast({ type: 'ORDER_APPROVED', payload: orderId })
-    return approved
+    })
+    if (!row) return null
+    await get().refresh()
+    return row
   },
 
-  updateOrderStatus: (id, status) => {
-    const updated = get().orders.map((o) =>
-      o.id === id
-        ? {
-            ...o,
-            status,
-            completed_at: status === 'completed' ? new Date().toISOString() : o.completed_at,
-          }
-        : o,
-    )
-    set({ orders: updated })
-    setItem('orders', updated)
-    broadcast({ type: 'ORDER_UPDATED', payload: { id, status } })
+  updateOrderStatus: async (id, status) => {
+    const updates: Record<string, unknown> = { status }
+    if (status === 'completed') updates.completed_at = new Date().toISOString()
+    const row = await updateOrderRow(id, updates)
+    if (!row) return false
+    await get().refresh()
+    return true
   },
 
-  cancelOrder: (id) => {
-    get().updateOrderStatus(id, 'cancelled')
+  cancelOrder: async (id) => {
+    return get().updateOrderStatus(id, 'cancelled')
   },
 }))

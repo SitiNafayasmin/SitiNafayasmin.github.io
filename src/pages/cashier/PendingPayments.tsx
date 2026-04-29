@@ -53,11 +53,12 @@ export function PendingPayments() {
               order={order}
               currency={settings.currency}
               defaultWaitMinutes={settings.default_wait_minutes}
-              onApprove={(paymentMethod, waitMinutes) => {
-                const approved = approveCustomerOrder({
+              onApprove={async (paymentMethod, waitMinutes) => {
+                const approved = await approveCustomerOrder({
                   orderId: order.id,
                   paymentMethod,
                   cashierId: currentUser?.id ?? null,
+                  cashierUserId: currentUser?.user_id ?? null,
                   cashierName: currentUser?.name ?? null,
                   shiftId: activeShift?.id ?? null,
                   waitMinutes,
@@ -66,7 +67,7 @@ export function PendingPayments() {
               }}
               onCancel={() => {
                 if (window.confirm(t.cashier.pending.cancelConfirm)) {
-                  cancelOrder(order.id)
+                  void cancelOrder(order.id)
                 }
               }}
             />
@@ -87,7 +88,7 @@ function PendingOrderCard({
   order: Order
   currency: string
   defaultWaitMinutes: number
-  onApprove: (paymentMethod: PaymentMethod, waitMinutes: number) => void
+  onApprove: (paymentMethod: PaymentMethod, waitMinutes: number) => void | Promise<void>
   onCancel: () => void
 }) {
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('cash')

@@ -1,15 +1,16 @@
 import { useState } from 'react'
 import { Save, Download, Upload } from 'lucide-react'
 import { useSettingsStore } from '../../stores/settingsStore'
+import { t } from '../../lib/i18n'
 
 export function AdminSettings() {
   const { settings, updateSettings } = useSettingsStore()
   const [form, setForm] = useState(settings)
   const [saved, setSaved] = useState(false)
 
-  const handleSave = (e: React.FormEvent) => {
+  const handleSave = async (e: React.FormEvent) => {
     e.preventDefault()
-    updateSettings(form)
+    await updateSettings(form)
     setSaved(true)
     setTimeout(() => setSaved(false), 2000)
   }
@@ -35,7 +36,7 @@ export function AdminSettings() {
     const file = e.target.files?.[0]
     if (!file) return
     if (file.size > 5 * 1024 * 1024) {
-      alert('Backup file too large (max 5MB).')
+      alert(t.admin.settings.importTooLarge)
       return
     }
     const reader = new FileReader()
@@ -61,7 +62,7 @@ export function AdminSettings() {
         })
         window.location.reload()
       } catch {
-        alert('Invalid backup file')
+        alert(t.admin.settings.importInvalid)
       }
     }
     reader.readAsText(file)
@@ -69,13 +70,13 @@ export function AdminSettings() {
 
   return (
     <div>
-      <h2 className="text-2xl font-bold text-gray-800 mb-6">Settings</h2>
+      <h2 className="text-2xl font-bold text-gray-800 mb-6">{t.admin.settings.title}</h2>
 
       <form onSubmit={handleSave} className="bg-white rounded-xl shadow-sm p-6 mb-6">
-        <h3 className="text-lg font-semibold mb-4">Business Settings</h3>
+        <h3 className="text-lg font-semibold mb-4">{t.admin.settings.subtitle}</h3>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Business Name</label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">{t.admin.settings.businessName}</label>
             <input
               value={form.business_name}
               onChange={(e) => setForm({ ...form, business_name: e.target.value })}
@@ -83,7 +84,7 @@ export function AdminSettings() {
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Currency</label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">{t.admin.settings.currency}</label>
             <input
               value={form.currency}
               onChange={(e) => setForm({ ...form, currency: e.target.value })}
@@ -91,7 +92,7 @@ export function AdminSettings() {
             />
           </div>
           <div className="md:col-span-2">
-            <label className="block text-sm font-medium text-gray-700 mb-1">Address</label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">{t.admin.settings.address}</label>
             <textarea
               value={form.address}
               onChange={(e) => setForm({ ...form, address: e.target.value })}
@@ -100,7 +101,7 @@ export function AdminSettings() {
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Tax Rate (%)</label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">{t.admin.settings.taxRate}</label>
             <input
               type="number"
               step="0.1"
@@ -108,9 +109,10 @@ export function AdminSettings() {
               onChange={(e) => setForm({ ...form, tax_rate: parseFloat(e.target.value) || 0 })}
               className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
+            <p className="mt-1 text-xs text-gray-500">{t.admin.settings.taxRateHint}</p>
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Receipt Footer</label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">{t.admin.settings.receiptFooter}</label>
             <input
               value={form.receipt_footer}
               onChange={(e) => setForm({ ...form, receipt_footer: e.target.value })}
@@ -119,7 +121,7 @@ export function AdminSettings() {
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
-              Default wait time (minutes)
+              {t.admin.settings.defaultWait}
             </label>
             <input
               type="number"
@@ -135,7 +137,7 @@ export function AdminSettings() {
               className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
             <p className="mt-1 text-xs text-gray-500">
-              Suggested prep time shown to customers when their QR order is accepted.
+              {t.admin.settings.defaultWaitHint}
             </p>
           </div>
         </div>
@@ -145,25 +147,25 @@ export function AdminSettings() {
             className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-700"
           >
             <Save size={16} />
-            {saved ? 'Saved!' : 'Save Settings'}
+            {saved ? t.admin.settings.savedSettings : t.admin.settings.saveSettings}
           </button>
         </div>
       </form>
 
       <div className="bg-white rounded-xl shadow-sm p-6">
-        <h3 className="text-lg font-semibold mb-4">Data Backup & Restore</h3>
+        <h3 className="text-lg font-semibold mb-4">{t.admin.settings.backup}</h3>
         <p className="text-sm text-gray-500 mb-4">
-          Export all POS data as a JSON file for backup, or import a previously exported backup.
+          {t.admin.settings.backupDesc}
         </p>
         <div className="flex gap-4">
           <button
             onClick={handleExport}
             className="flex items-center gap-2 bg-green-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-green-700"
           >
-            <Download size={16} /> Export Backup
+            <Download size={16} /> {t.admin.settings.export}
           </button>
           <label className="flex items-center gap-2 bg-orange-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-orange-700 cursor-pointer">
-            <Upload size={16} /> Import Backup
+            <Upload size={16} /> {t.admin.settings.import}
             <input type="file" accept=".json" onChange={handleImport} className="hidden" />
           </label>
         </div>

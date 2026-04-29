@@ -18,9 +18,11 @@
 -- The file is intentionally ordered:
 --   1. Extensions
 --   2. Tables (so helper functions can reference `staff`)
---   3. Helper functions (is_staff / is_admin)
+--   3. Helper functions (is_staff / is_admin / order_stock_decrement trigger)
 --   4. Row-level security
 --   5. Seed data
+--   6. Storage buckets (menu photos)
+--   7. Realtime publication (so the SPA gets live updates without polling)
 -- The previous ordering had helpers before tables, which failed with
 -- 42P01 "relation public.staff does not exist" at CREATE FUNCTION time.
 
@@ -50,8 +52,14 @@ CREATE TABLE IF NOT EXISTS products (
   image_url TEXT,
   sku TEXT,
   available BOOLEAN NOT NULL DEFAULT true,
+  -- NULL = unlimited/untracked stock; non-NULL integer = current remaining
+  -- units. Auto-decremented by the order_stock_decrement trigger below.
+  stock INTEGER,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+-- Additive migration for pre-Phase-A installs that already had `products`
+ALTER TABLE products ADD COLUMN IF NOT EXISTS stock INTEGER;
 
 CREATE TABLE IF NOT EXISTS staff (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -159,6 +167,51 @@ AS $$
   );
 $$;
 
+-- Decrement product.stock when an order transitions to a status that
+-- commits inventory. For staff-created orders this is the initial INSERT
+-- (orders start as 'pending'). For customer_qr orders it's the UPDATE from
+-- 'awaiting_payment' to 'pending' when the cashier approves payment.
+-- Cancelled or rejected orders do NOT decrement. Stock = NULL means the
+-- product is untracked (unlimited) and is skipped.
+CREATE OR REPLACE FUNCTION public.order_stock_decrement()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  committed_old BOOLEAN := false;
+  committed_new BOOLEAN := false;
+BEGIN
+  IF TG_OP = 'UPDATE' THEN
+    committed_old := OLD.status IN ('pending', 'preparing', 'ready', 'completed');
+  END IF;
+  committed_new := NEW.status IN ('pending', 'preparing', 'ready', 'completed');
+
+  -- Only act on the transition from "not committed" to "committed".
+  IF committed_new AND NOT committed_old THEN
+    UPDATE products p
+      SET stock = GREATEST(0, p.stock - oi.qty)
+      FROM (
+        SELECT product_id, SUM(quantity)::INTEGER AS qty
+          FROM order_items
+         WHERE order_id = NEW.id
+         GROUP BY product_id
+      ) oi
+     WHERE p.id = oi.product_id
+       AND p.stock IS NOT NULL;
+  END IF;
+
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS order_stock_decrement_trg ON orders;
+CREATE TRIGGER order_stock_decrement_trg
+AFTER INSERT OR UPDATE OF status ON orders
+FOR EACH ROW
+EXECUTE FUNCTION public.order_stock_decrement();
+
 -- ----------------------------------------------------------------------------
 -- 4. Row-Level Security
 -- ----------------------------------------------------------------------------
@@ -253,3 +306,58 @@ ON CONFLICT (name) DO NOTHING;
 
 INSERT INTO tables (label) VALUES ('1'), ('2'), ('3'), ('4'), ('5')
 ON CONFLICT (label) DO NOTHING;
+
+-- ----------------------------------------------------------------------------
+-- 6. Storage bucket for menu photos
+-- ----------------------------------------------------------------------------
+-- Admins upload product photos from the admin dashboard; customers see them
+-- in the public menu. The bucket is public-read for simplicity (image URLs
+-- are used in <img> tags), but writes are staff-gated via policy.
+
+INSERT INTO storage.buckets (id, name, public)
+VALUES ('menu-photos', 'menu-photos', true)
+ON CONFLICT (id) DO UPDATE SET public = EXCLUDED.public;
+
+DROP POLICY IF EXISTS "public read menu photos" ON storage.objects;
+CREATE POLICY "public read menu photos" ON storage.objects
+  FOR SELECT USING (bucket_id = 'menu-photos');
+
+DROP POLICY IF EXISTS "staff upload menu photos" ON storage.objects;
+CREATE POLICY "staff upload menu photos" ON storage.objects
+  FOR INSERT WITH CHECK (bucket_id = 'menu-photos' AND public.is_staff());
+
+DROP POLICY IF EXISTS "staff update menu photos" ON storage.objects;
+CREATE POLICY "staff update menu photos" ON storage.objects
+  FOR UPDATE USING (bucket_id = 'menu-photos' AND public.is_staff())
+  WITH CHECK (bucket_id = 'menu-photos' AND public.is_staff());
+
+DROP POLICY IF EXISTS "staff delete menu photos" ON storage.objects;
+CREATE POLICY "staff delete menu photos" ON storage.objects
+  FOR DELETE USING (bucket_id = 'menu-photos' AND public.is_staff());
+
+-- ----------------------------------------------------------------------------
+-- 7. Realtime publication
+-- ----------------------------------------------------------------------------
+-- The SPA subscribes to these tables so menu/tables/settings/orders updates
+-- propagate across devices without polling. On a fresh Supabase project the
+-- `supabase_realtime` publication is created automatically and empty; we add
+-- our tables here. The DO block makes this idempotent.
+
+DO $$
+DECLARE
+  tbl TEXT;
+BEGIN
+  FOREACH tbl IN ARRAY ARRAY[
+    'categories', 'products', 'tables', 'settings',
+    'orders', 'order_items', 'shifts'
+  ] LOOP
+    BEGIN
+      EXECUTE format('ALTER PUBLICATION supabase_realtime ADD TABLE %I', tbl);
+    EXCEPTION
+      WHEN duplicate_object THEN NULL;
+      WHEN undefined_object THEN
+        -- Publication doesn't exist (self-hosted w/o it); skip silently
+        NULL;
+    END;
+  END LOOP;
+END $$;

@@ -6,13 +6,14 @@ import { useSettingsStore } from '../../stores/settingsStore'
 import { formatCurrency, sanitizeTableId } from '../../lib/utils'
 import { Button, Card } from '../../components/ui/primitives'
 import { t } from '../../lib/i18n'
+import { subscribeToOrder } from '../../lib/data'
 
 export function CustomerOrderStatus() {
   const { tableId, orderId } = useParams<{ tableId: string; orderId: string }>()
   const safeTable = sanitizeTableId(tableId)
   const orders = useOrderStore((s) => s.orders)
   const initialize = useOrderStore((s) => s.initialize)
-  const refresh = useOrderStore((s) => s.refreshFromStorage)
+  const refresh = useOrderStore((s) => s.refresh)
   const settings = useSettingsStore((s) => s.settings)
   const initSettings = useSettingsStore((s) => s.initialize)
 
@@ -21,11 +22,21 @@ export function CustomerOrderStatus() {
     initSettings()
   }, [initialize, initSettings])
 
-  // Poll for updates (covers cross-origin cases where BroadcastChannel doesn't fire)
+  // Live-update via Supabase Realtime on the specific order; poll as a
+  // fallback in case the socket is unavailable.
   useEffect(() => {
-    const interval = setInterval(refresh, 3000)
-    return () => clearInterval(interval)
-  }, [refresh])
+    if (!orderId) return
+    const unsub = subscribeToOrder(orderId, () => {
+      void refresh()
+    })
+    const interval = setInterval(() => {
+      void refresh()
+    }, 5000)
+    return () => {
+      unsub()
+      clearInterval(interval)
+    }
+  }, [orderId, refresh])
 
   const order = orders.find((o) => o.id === orderId)
 
