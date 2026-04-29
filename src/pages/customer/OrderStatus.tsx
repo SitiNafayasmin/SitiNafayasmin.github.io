@@ -1,44 +1,55 @@
-import { useEffect } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { CheckCircle2, Clock, CreditCard, Utensils, XCircle } from 'lucide-react'
-import { useOrderStore } from '../../stores/orderStore'
 import { useSettingsStore } from '../../stores/settingsStore'
 import { formatCurrency, sanitizeTableId } from '../../lib/utils'
 import { Button, Card } from '../../components/ui/primitives'
 import { t } from '../../lib/i18n'
-import { subscribeToOrder } from '../../lib/data'
+import { fetchOrderById, subscribeToOrder } from '../../lib/data'
+import type { Order } from '../../lib/types'
+import { getItem } from '../../lib/localStorage'
 
 export function CustomerOrderStatus() {
   const { tableId, orderId } = useParams<{ tableId: string; orderId: string }>()
   const safeTable = sanitizeTableId(tableId)
-  const orders = useOrderStore((s) => s.orders)
-  const initialize = useOrderStore((s) => s.initialize)
-  const refresh = useOrderStore((s) => s.refresh)
   const settings = useSettingsStore((s) => s.settings)
   const initSettings = useSettingsStore((s) => s.initialize)
+  const [order, setOrder] = useState<Order | null>(null)
 
   useEffect(() => {
-    initialize()
     initSettings()
-  }, [initialize, initSettings])
+  }, [initSettings])
 
-  // Live-update via Supabase Realtime on the specific order; poll as a
-  // fallback in case the socket is unavailable.
+  const loadOrder = useCallback(async () => {
+    if (!orderId) return
+    const fresh = await fetchOrderById(orderId)
+    if (fresh) {
+      setOrder(fresh)
+      return
+    }
+    // Supabase unreachable / not configured — fall back to localStorage cache
+    // (where the cashier device persists orders for offline mode).
+    const cached = getItem<Order[]>('orders', [])
+    const match = cached.find((o) => o.id === orderId)
+    if (match) setOrder(match)
+  }, [orderId])
+
+  // Initial fetch + live update via per-order Supabase Realtime subscription.
+  // Poll as a fallback if the socket is unavailable.
   useEffect(() => {
     if (!orderId) return
+    void loadOrder()
     const unsub = subscribeToOrder(orderId, () => {
-      void refresh()
+      void loadOrder()
     })
     const interval = setInterval(() => {
-      void refresh()
+      void loadOrder()
     }, 5000)
     return () => {
       unsub()
       clearInterval(interval)
     }
-  }, [orderId, refresh])
-
-  const order = orders.find((o) => o.id === orderId)
+  }, [orderId, loadOrder])
 
   if (!order) {
     return (
