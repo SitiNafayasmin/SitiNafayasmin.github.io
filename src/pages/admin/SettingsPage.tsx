@@ -7,10 +7,16 @@ export function AdminSettings() {
   const { settings, updateSettings } = useSettingsStore()
   const [form, setForm] = useState(settings)
   const [saved, setSaved] = useState(false)
+  const [saveError, setSaveError] = useState<string | null>(null)
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault()
-    await updateSettings(form)
+    setSaveError(null)
+    const ok = await updateSettings(form)
+    if (!ok) {
+      setSaveError(t.admin.settings.saveFailed)
+      return
+    }
     setSaved(true)
     setTimeout(() => setSaved(false), 2000)
   }
@@ -141,7 +147,7 @@ export function AdminSettings() {
             </p>
           </div>
         </div>
-        <div className="mt-4">
+        <div className="mt-4 flex items-center gap-3">
           <button
             type="submit"
             className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-700"
@@ -149,6 +155,7 @@ export function AdminSettings() {
             <Save size={16} />
             {saved ? t.admin.settings.savedSettings : t.admin.settings.saveSettings}
           </button>
+          {saveError && <span className="text-sm text-red-600">{saveError}</span>}
         </div>
       </form>
 

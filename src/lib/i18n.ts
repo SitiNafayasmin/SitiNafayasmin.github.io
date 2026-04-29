@@ -162,6 +162,7 @@ export const t = {
       colActions: 'Aksi',
       uncategorized: 'Tanpa kategori',
       unlimited: 'Tak terbatas',
+      saveFailed: 'Gagal menyimpan produk. Coba lagi.',
     },
     orders: {
       title: 'Riwayat Pesanan',
@@ -241,6 +242,7 @@ export const t = {
         'Ditampilkan ke pelanggan saat pesanan QR mereka disetujui kasir.',
       saveSettings: 'Simpan pengaturan',
       savedSettings: 'Tersimpan',
+      saveFailed: 'Gagal menyimpan pengaturan. Coba lagi.',
       backup: 'Cadangan data',
       export: 'Ekspor cadangan',
       import: 'Impor cadangan',
