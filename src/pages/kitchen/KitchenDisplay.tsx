@@ -64,7 +64,7 @@ export function KitchenDisplay() {
 
   const handleStatusChange = useCallback(
     (orderId: string, newStatus: OrderStatus) => {
-      updateOrderStatus(orderId, newStatus)
+      void updateOrderStatus(orderId, newStatus)
     },
     [updateOrderStatus],
   )

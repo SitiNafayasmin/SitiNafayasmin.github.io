@@ -14,6 +14,8 @@ export interface Product {
   image_url: string | null
   sku: string | null
   available: boolean
+  /** NULL = unlimited/untracked stock. */
+  stock: number | null
   created_at: string
 }
 
@@ -50,6 +52,7 @@ export interface Order {
   total: number
   payment_method: PaymentMethod | null
   cashier_id: string | null
+  cashier_user_id?: string | null
   cashier_name: string | null
   shift_id: string | null
   table_number: string | null

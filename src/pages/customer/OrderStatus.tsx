@@ -1,33 +1,60 @@
-import { useEffect } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { CheckCircle2, Clock, CreditCard, Utensils, XCircle } from 'lucide-react'
-import { useOrderStore } from '../../stores/orderStore'
 import { useSettingsStore } from '../../stores/settingsStore'
 import { formatCurrency, sanitizeTableId } from '../../lib/utils'
 import { Button, Card } from '../../components/ui/primitives'
 import { t } from '../../lib/i18n'
+import { fetchOrderById, subscribeToOrder } from '../../lib/data'
+import type { Order } from '../../lib/types'
+import { getItem } from '../../lib/localStorage'
 
 export function CustomerOrderStatus() {
   const { tableId, orderId } = useParams<{ tableId: string; orderId: string }>()
   const safeTable = sanitizeTableId(tableId)
-  const orders = useOrderStore((s) => s.orders)
-  const initialize = useOrderStore((s) => s.initialize)
-  const refresh = useOrderStore((s) => s.refreshFromStorage)
   const settings = useSettingsStore((s) => s.settings)
   const initSettings = useSettingsStore((s) => s.initialize)
+  const [order, setOrder] = useState<Order | null>(null)
 
   useEffect(() => {
-    initialize()
     initSettings()
-  }, [initialize, initSettings])
+  }, [initSettings])
 
-  // Poll for updates (covers cross-origin cases where BroadcastChannel doesn't fire)
+  const loadOrder = useCallback(async () => {
+    if (!orderId) return
+    const fresh = await fetchOrderById(orderId)
+    if (fresh) {
+      setOrder(fresh)
+      return
+    }
+    // Supabase unreachable / not configured — fall back to localStorage cache
+    // (where the cashier device persists orders for offline mode).
+    const cached = getItem<Order[]>('orders', [])
+    const match = cached.find((o) => o.id === orderId)
+    if (match) setOrder(match)
+  }, [orderId])
+
+  // Initial fetch + live update via per-order Supabase Realtime subscription.
+  // Poll as a fallback if the socket is unavailable.
   useEffect(() => {
-    const interval = setInterval(refresh, 3000)
-    return () => clearInterval(interval)
-  }, [refresh])
-
-  const order = orders.find((o) => o.id === orderId)
+    if (!orderId) return
+    let cancelled = false
+    const trigger = () => {
+      if (cancelled) return
+      // loadOrder is async — setState only runs after the awaited fetch
+      // resolves on a subsequent microtask, not synchronously during the
+      // effect body.
+      void loadOrder()
+    }
+    trigger()
+    const unsub = subscribeToOrder(orderId, trigger)
+    const interval = setInterval(trigger, 5000)
+    return () => {
+      cancelled = true
+      unsub()
+      clearInterval(interval)
+    }
+  }, [orderId, loadOrder])
 
   if (!order) {
     return (
