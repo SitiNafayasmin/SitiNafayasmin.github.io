@@ -226,9 +226,9 @@ export function POSPage() {
                         {t.admin.products.soldOut}
                       </span>
                     )}
-                    {stockKnown && !soldOut && (product.stock as number) <= 5 && (
+                    {remaining !== null && !soldOut && remaining <= 5 && (
                       <span className="mt-1 ml-1 inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-medium text-amber-700">
-                        {product.stock}
+                        {remaining}
                       </span>
                     )}
                   </button>
