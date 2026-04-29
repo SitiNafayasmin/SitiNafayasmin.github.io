@@ -38,14 +38,19 @@ export function CustomerOrderStatus() {
   // Poll as a fallback if the socket is unavailable.
   useEffect(() => {
     if (!orderId) return
-    void loadOrder()
-    const unsub = subscribeToOrder(orderId, () => {
+    let cancelled = false
+    const trigger = () => {
+      if (cancelled) return
+      // loadOrder is async — setState only runs after the awaited fetch
+      // resolves on a subsequent microtask, not synchronously during the
+      // effect body.
       void loadOrder()
-    })
-    const interval = setInterval(() => {
-      void loadOrder()
-    }, 5000)
+    }
+    trigger()
+    const unsub = subscribeToOrder(orderId, trigger)
+    const interval = setInterval(trigger, 5000)
     return () => {
+      cancelled = true
       unsub()
       clearInterval(interval)
     }
